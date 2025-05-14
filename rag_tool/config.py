@@ -22,3 +22,7 @@ RAG_API_URL = os.getenv("RAG_API_URL", "http://localhost:8000")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 # Overlap between chunks to preserve context
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+
+# Query parameters
+# Number of top documents to retrieve for queries
+TOP_K = int(os.getenv("TOP_K", "5"))

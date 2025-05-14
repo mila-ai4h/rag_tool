@@ -1,9 +1,10 @@
 import os
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .indexer import Indexer
 from .query_engine import QueryEngine
+from .config import TOP_K
 
 app = FastAPI()
 indexer = Indexer()
@@ -138,23 +139,41 @@ async def add_document(name: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/collections/{name}/query")
-def query_collection(name: str, q: str, answer: bool = False):
+def query_collection(
+    name: str, 
+    q: str, 
+    answer: bool = False, 
+    top_k: Optional[int] = Query(
+        default=None,
+        description=f"Number of top documents to retrieve (default: {TOP_K} from config)"
+    )
+):
+    """
+    Query a collection with optional LLM answer generation.
+    
+    Args:
+        name: Name of the collection to query
+        q: The search query
+        answer: Whether to generate an LLM answer (default: False)
+        top_k: Number of top documents to retrieve (default: TOP_K from config)
+    """
     try:
         qe = QueryEngine(name)
     except Exception:
         raise HTTPException(404, detail="collection not found")
     
-    # Get raw snippets in both cases
-    docs = qe.raw_search(q)
-    snippets = [{"text": d.node.get_text(), "score": d.score} for d in docs]
-    
     if answer:
-        # Get LLM answer and return both
-        answer_result = qe.answer(q)
+        # Get LLM answer which includes the relevant snippets
+        answer_result = qe.answer(q, top_k=top_k) if top_k is not None else qe.answer(q)
+        # Extract snippets from the answer result
+        snippets = [{"text": node.node.get_text(), "score": node.score} 
+                   for node in answer_result.source_nodes]
         return {
             "answer": answer_result.response,
             "snippets": snippets
         }
     else:
-        # Return just the snippets
+        # Get raw snippets only
+        docs = qe.raw_search(q, top_k=top_k) if top_k is not None else qe.raw_search(q)
+        snippets = [{"text": d.node.get_text(), "score": d.score} for d in docs]
         return {"snippets": snippets}
