@@ -1,2 +1,0 @@
-- Add tests
-- Use a proper vector store: Pinecone, Qdrant, Chroma, Weaviate
