@@ -7,7 +7,8 @@ from qdrant_client.http.models import Distance, VectorParams, Filter, FieldCondi
 import fitz  # PyMuPDF
 import uuid
 import logging
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict, Any, Union
+from datetime import datetime
 
 from .models import (
     CollectionCreated,
@@ -126,10 +127,16 @@ class Indexer:
             logger.exception("Error deleting collection=%s: %s", name, str(e))
             return CollectionError(collection_name=name, error=str(e))
 
-    def _extract_documents_from_pdf(self, pdf_path: str, filename: str, source_id: str, tags: List[str]) -> Tuple[list[Document], int]:
+    def _extract_documents_from_pdf(self, pdf_path: str, filename: str, source_id: str, tags: List[str], extras: Optional[Dict[str, Any]] = None) -> Tuple[list[Document], int]:
         """Extract text from PDF and create Document objects with metadata."""
-        logger.info("Starting PDF extraction for file=%s, source_id=%s, tags=%s", filename, source_id, tags)
+        logger.info("Starting PDF extraction for file=%s, source_id=%s, tags=%s, extras=%s", 
+                   filename, source_id, tags, extras)
         documents = []
+        
+        # Get current timestamp in ISO format
+        uploaded_at = datetime.utcnow().isoformat()
+        logger.info("Using upload timestamp: %s", uploaded_at)
+        
         with fitz.open(pdf_path) as pdf:
             total_pages = len(pdf)
             logger.info("PDF opened successfully, total pages=%d", total_pages)
@@ -141,10 +148,12 @@ class Indexer:
                         text=text,
                         metadata={
                             "source_id": source_id,
-                            "page_number": page_number,
                             "filename": filename,
+                            "type": "pdf",
+                            "page_number": page_number,
                             "tags": tags,
-                            "type": "pdf"
+                            "extras": extras,
+                            "uploaded_at": uploaded_at
                         }
                     ))
                     logger.debug("Extracted text from page %d/%d", page_number, total_pages)
@@ -154,10 +163,23 @@ class Indexer:
         logger.info("PDF extraction completed, extracted %d non-empty pages", len(documents))
         return documents, len(documents)
 
-    def index_pdf(self, collection_name: str, pdf_path: str, filename: str, source_id: Optional[str] = None, tags: Optional[List[str]] = None) -> DocumentIndexed | DocumentError:
+    def index_pdf(
+        self,
+        collection_name: str,
+        file_path: str,
+        filename: str,
+        source_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        extras: Optional[Dict[str, Any]] = None
+    ) -> Union[DocumentIndexed, DocumentError]:
         """Index a PDF file into the specified collection."""
-        logger.info("Starting PDF indexing process for collection=%s, file=%s, tags=%s", collection_name, filename, tags)
+        logger.info("Starting PDF indexing process for collection=%s, file=%s, tags=%s, extras=%s", 
+                   collection_name, filename, tags, extras)
         try:
+            # Get current timestamp in ISO format for the response
+            uploaded_at = datetime.utcnow().isoformat()
+            logger.info("Using upload timestamp: %s", uploaded_at)
+
             # Verify collection exists
             existing = {c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
@@ -191,10 +213,10 @@ class Indexer:
                 logger.info("Successfully deleted existing chunks for source_id=%s", source_id)
 
             # Extract documents from PDF
-            documents, pages_count = self._extract_documents_from_pdf(pdf_path, filename, source_id, tags)
+            documents, pages_count = self._extract_documents_from_pdf(file_path, filename, source_id, tags, extras)
             if not documents:
                 logger.error("No text content found in PDF file=%s", filename)
-                return DocumentError(collection_name=collection_name, error="No text content found in PDF")
+                return DocumentError(collection_name=collection_name, error="No text content found in PDF file")
 
             # Chunk with SentenceSplitter
             logger.info("Starting document chunking with chunk_size=%d, chunk_overlap=%d", 
@@ -226,9 +248,13 @@ class Indexer:
             return DocumentIndexed(
                 collection_name=collection_name,
                 source_id=source_id,
+                filename=filename,
                 pages_indexed=pages_count,
                 chunks_created=len(nodes),
-                tags=tags
+                tags=tags,
+                uploaded_at=uploaded_at,
+                extras=extras,
+                message="Document indexed successfully"
             )
 
         except Exception as e:
@@ -340,10 +366,12 @@ class Indexer:
                 if source_id not in source_info:
                     source_info[source_id] = {
                         "filename": point.payload.get("filename", "unknown"),
+                        "type": point.payload.get("type", "pdf"),
                         "chunks_count": 0,
                         "pages": set(),
                         "tags": point.payload.get("tags", []),
-                        "type": point.payload.get("type", "pdf")
+                        "extras": point.payload.get("extras", None),
+                        "uploaded_at": point.payload.get("uploaded_at", "")
                     }
                 
                 source_info[source_id]["chunks_count"] += 1
@@ -361,7 +389,9 @@ class Indexer:
                     first_page=min(pages) if pages else 0,
                     last_page=max(pages) if pages else 0,
                     tags=info["tags"],
-                    type=info["type"]
+                    type=info["type"],
+                    uploaded_at=info["uploaded_at"],
+                    extras=info["extras"]
                 ))
 
             # Sort sources by filename

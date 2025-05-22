@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 # Collection models
@@ -31,10 +31,13 @@ class CollectionList(BaseModel):
 class DocumentIndexed(BaseModel):
     collection_name: str
     source_id: str
+    filename: str  # Original filename of the uploaded document
+    type: str = "pdf"
     pages_indexed: int
     chunks_created: int
     tags: List[str]
-    type: str = "pdf"
+    extras: Optional[Dict[str, Any]] = None  # Optional key-value pairs for additional metadata
+    uploaded_at: str  # ISO format timestamp of when the document was uploaded
     message: str = "Document indexed successfully"
 
 class DocumentError(BaseModel):
@@ -60,6 +63,8 @@ class SourceInfo(BaseModel):
     last_page: int
     tags: List[str]
     type: str = "pdf"
+    uploaded_at: str  # ISO format timestamp of when the document was uploaded
+    extras: Optional[Dict[str, Any]] = None  # Optional key-value pairs for additional metadata
 
 class SourceList(BaseModel):
     collection_name: str
@@ -70,3 +75,26 @@ class SourceList(BaseModel):
 class SourceListError(BaseModel):
     collection_name: str
     error: str
+
+class QueryResult(BaseModel):
+    """Model for a single query result."""
+    node_id: str
+    text: str
+    source_id: str
+    filename: str
+    page_number: int
+    tags: List[str]
+    extras: Optional[Dict[str, Any]] = None  # Optional key-value pairs for additional metadata
+    uploaded_at: str  # ISO format timestamp of when the document was uploaded
+    similarity_score: float  # Score between 0 and 1, where 1 is most similar
+
+class SourceChunk(BaseModel):
+    """Model for a single source chunk, without similarity score."""
+    node_id: str
+    text: str
+    source_id: str
+    filename: str
+    page_number: int
+    tags: List[str]
+    extras: Optional[Dict[str, Any]] = None  # Optional key-value pairs for additional metadata
+    uploaded_at: str  # ISO format timestamp of when the document was uploaded

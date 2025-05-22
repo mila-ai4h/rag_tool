@@ -4,7 +4,8 @@ from starlette.status import HTTP_403_FORBIDDEN
 import tempfile
 import os
 import logging
-from typing import Optional, List
+import json
+from typing import Optional, List, Dict, Any
 
 from .config import (
     API_KEY,
@@ -94,6 +95,23 @@ def delete_collection(name: str):
         raise HTTPException(status_code=500, detail=result.error)
     return result
 
+def validate_extras(extras_dict: Dict[str, Any]) -> None:
+    """Validate that extras only contains simple key-value pairs (strings, numbers, booleans)."""
+    if not isinstance(extras_dict, dict):
+        raise ValueError("extras must be a JSON object")
+    
+    for key, value in extras_dict.items():
+        # Check key is a string
+        if not isinstance(key, str):
+            raise ValueError(f"extras keys must be strings, got {type(key).__name__}")
+        
+        # Check value is a simple type
+        if not isinstance(value, (str, int, float, bool)) or value is None:
+            raise ValueError(
+                f"extras values must be strings, numbers, booleans, or null, "
+                f"got {type(value).__name__} for key '{key}'"
+            )
+
 @app.post(
     "/collections/{name}/add-pdf",
     response_model=DocumentIndexed,
@@ -101,16 +119,85 @@ def delete_collection(name: str):
 )
 def add_pdf(
     name: str,
-    file: UploadFile = File(...),
-    source_id: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),  # Comma-separated list of tags
+    file: UploadFile = File(..., description="The PDF file to upload"),
+    source_id: Optional[str] = Form(None, description="Optional custom source ID. If not provided, a UUID will be generated"),
+    tags: Optional[str] = Form(
+        None, 
+        description="""Comma-separated list of tags to associate with the document.
+        Example: "engineering,2024,project-x"
+        Spaces around commas are automatically trimmed."""
+    ),
+    extras: Optional[str] = Form(
+        None,
+        description="""Optional JSON string containing additional metadata as key-value pairs.
+        Must be a valid JSON object with simple key-value pairs only.
+        Keys must be strings, values must be strings, numbers, booleans, or null.
+        Examples:
+        - Simple: {"pdf_link": "https://site.com/file.pdf"}
+        - Multiple fields: {"author": "John Doe", "version": 1.0, "is_draft": false}
+        
+        Note: 
+        - Use double quotes for strings, not single quotes
+        - No nested objects or arrays allowed
+        - No complex types allowed"""
+    ),
 ):
+    """
+    Upload and index a PDF document into the specified collection.
+    
+    The document will be split into chunks, embedded, and stored in the vector database.
+    Each chunk will inherit the document's metadata (tags, extras, etc.).
+    
+    Args:
+        name: Name of the collection to add the document to
+        file: The PDF file to upload
+        source_id: Optional custom source ID. If not provided, a UUID will be generated
+        tags: Optional comma-separated list of tags. Example: "engineering,2024,project-x"
+        extras: Optional JSON string with additional metadata. Must be a valid JSON object
+               with simple key-value pairs only (strings, numbers, booleans, or null).
+               Example: {"pdf_link": "https://site.com/file.pdf", "version": 1.0}
+    
+    Returns:
+        DocumentIndexed: Information about the indexed document including:
+            - collection_name: Name of the collection
+            - source_id: ID of the document
+            - pages_indexed: Number of pages processed
+            - chunks_created: Number of chunks created
+            - tags: List of tags applied
+            - uploaded_at: Timestamp of upload
+            - extras: Additional metadata provided
+            - message: Success message
+    
+    Raises:
+        HTTPException: 
+            - 400: If the file is not a PDF
+            - 400: If extras is not a valid JSON string
+            - 400: If extras contains complex types (nested objects, arrays)
+            - 500: If there are any processing errors
+    """
     # Verify file is PDF
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     # Parse tags
     tag_list = [tag.strip() for tag in tags.split(',')] if tags else []
+
+    # Parse extras if provided
+    extras_dict = None
+    if extras:
+        try:
+            extras_dict = json.loads(extras)
+            validate_extras(extras_dict)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=400, 
+                detail="extras must be a valid JSON string"
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=str(e)
+            )
 
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
@@ -120,7 +207,7 @@ def add_pdf(
 
     try:
         # Index the PDF
-        result = indexer.index_pdf(name, temp_path, file.filename, source_id, tag_list)
+        result = indexer.index_pdf(name, temp_path, file.filename, source_id, tag_list, extras_dict)
         
         if isinstance(result, DocumentError):
             raise HTTPException(status_code=500, detail=result.error)

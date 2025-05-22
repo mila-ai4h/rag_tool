@@ -41,7 +41,7 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
 
 - **Document Management**
   - `POST /collections/{name}/add-pdf` — Add a PDF document to a collection
-    - Parameters: `file` (PDF), `source_id` (optional), `tags` (optional)
+    - Parameters: `file` (PDF), `source_id` (optional), `tags` (optional), `extras` (optional)
 
 - **Source Management**
   - `GET /collections/{collection_name}/sources` — List all sources in a collection
@@ -100,6 +100,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - Support deleting the chunks corresponding to a source_id from vector store
     - Avoid creating duplicate chunks when indexing the same document twice
     - Add optional tags to document. Support filtering results by tags ("AND" combination)
+    - Support "extras" metadata (key-value pairs that users can use for their own needs, e.g. which link should I use to download a document)
     - Track chunks by id
     - Require API key to authenticate
     - List source documents whose content has been indexed
@@ -108,9 +109,11 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
         - Chunk id (called node_id)
         - Chunk Text
         - Source id
-        - Filen name
+        - File name
         - Page number
         - Tags
+        - Extras
+        - Time at which document was uploaded
     - Return similarity scores along with each chunk returned by the /query and /answer endpoints
     - /query and /answer endpoints can filter by tags, source_id, page_number
     - /query and /answer endpings can modify the top_k chunks returned
@@ -118,11 +121,10 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
 
 ## Backlog:
 
-- Index a URL
-- Add back Langgraph example script?
 - Provision documents for Cash project
 - Deployment to cloud
-- Support "extras" metadata (key-value pairs that users can use for their own needs, e.g. which link should I use to download a document)
+- Index a URL
+- Add integration tests
+- Add back Langgraph example script?
 - Use a thread pool to connect to qdrant and make the FastAPI endpoints asynchronous
 - Explore better PDF text parsers as PyMuPDF does not fare very well on certain documents
-- Add integration tests

@@ -21,6 +21,8 @@ class QueryResult(BaseModel):
     filename: str
     page_number: int
     tags: List[str]
+    extras: Optional[dict]
+    uploaded_at: str
     similarity_score: float  # Score between 0 and 1, where 1 is most similar
 
 class SourceChunk(BaseModel):
@@ -31,6 +33,8 @@ class SourceChunk(BaseModel):
     filename: str
     page_number: int
     tags: List[str]
+    extras: Optional[dict]
+    uploaded_at: str
 
 class QueryResponse(BaseModel):
     """Model for the complete query response."""
@@ -171,6 +175,8 @@ class QueryEngine:
                     filename=payload.get("filename", ""),
                     page_number=payload.get("page_number", 0),
                     tags=payload.get("tags", []),
+                    extras=payload.get("extras", None),
+                    uploaded_at=payload.get("uploaded_at", ""),
                     similarity_score=scored_point.score
                 ))
             
@@ -242,7 +248,9 @@ class QueryEngine:
                     source_id=source_id,
                     filename=filename,
                     page_number=payload.get("page_number", 0),
-                    tags=payload.get("tags", [])
+                    tags=payload.get("tags", []),
+                    extras=payload.get("extras", None),
+                    uploaded_at=payload.get("uploaded_at", "")
                 ))
             
             # Sort chunks by page number and then by node_id for stable ordering
