@@ -1,0 +1,30 @@
+# Web Framework and Server
+fastapi
+uvicorn
+python-multipart
+
+# Configuration
+python-dotenv
+
+# Data Validation
+pydantic
+
+# LlamaIndex Components
+llama-index-core
+llama-index-embeddings-openai
+llama-index-vector-stores-qdrant
+llama-index-readers-web
+
+# Language Models
+openai
+tiktoken
+
+# Vector Database
+qdrant-client
+
+# Document Processing
+PyMuPDF
+
+# Langgraph (required for langgraph test script)
+langgraph
+grandalf

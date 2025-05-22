@@ -1,258 +1,129 @@
 # RAG Tool
 
-A modular Retrieval-Augmented Generation (RAG) library built on LlamaIndex, exposed via a FastAPI REST API, and easily integrated into LangGraph agents.
+A Retrieval-Augmented Generation (RAG) service that provides semantic search and question-answering capabilities.
 
-## Features
+## Overview
 
-- **Indexer**: Scan and index PDF documents into named collections.
-- **Query Engine**: Perform similarity searches or generate LLM-based answers over indexed collections.
-- **REST API**: Endpoints to trigger indexing and query collections.
-- **LangGraph Tool**: A wrapper to use the RAG service as a LangGraph "tool."
+FastAPI backend service that leverages LlamaIndex for document processing and retrieval, using Qdrant as the vector store and OpenAI's models for embeddings and LLM generation.
 
-## Table of Contents
+## Key Features
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-  - [Running the Server](#running-the-server)
-  - [Indexing Documents](#indexing-documents)
-  - [Querying Collections](#querying-collections)
-  - [Inspecting Collections](#inspecting-collections)
-  - [LangGraph Integration](#langgraph-integration)
-- [Development](#development)
-- [Testing](#testing)
-- [Docker](#docker)
-- [Contributing](#contributing)
-- [License](#license)
+- Collection-based document management with metadata and tags support
+- Semantic search with similarity scoring and source attribution
+- OpenAI integration (text-embedding-3-small for embeddings, gpt-4o for generation)
+- PDF document processing with PyMuPDF
 
-## Prerequisites
+## Technology Stack
 
-- Python 3.10+
-- An OpenAI API key (or another LLM provider)
-- pip
+- **Backend**: FastAPI
+- **Vector Store**: Qdrant
+- **Document Processing**: LlamaIndex
+- **AI Models**: OpenAI
+- **Language**: Python 3.x
 
-## Installation
+## API Documentation
 
-```bash
-git clone https://github.com/your-org/rag_tool.git
-cd rag_tool
-pip install -r requirements.txt
-```
+Interactive API documentation is available at `http://localhost:8000/docs` when running locally.
 
-## Configuration
+### Authentication
 
-Copy the .env template provided in the repo root:
+All endpoints except `/health` require an API key to be passed in the `X-API-Key` header.
 
-```bash
-cp .env.example .env
-```
+### Available Endpoints
 
-Open .env and fill in your values:
+- **Health Check**
+  - `GET /health` — Public health check endpoint
 
-- `OPENAI_API_KEY` – your LLM API key
-- (Optional) adjust `EMBEDDING_MODEL`, `LLM_MODEL`, `VECTOR_STORE_PATH`, etc.
+- **Collections Management**
+  - `GET /collections` — List all collections
+  - `POST /collections/{name}` — Create a new collection
+  - `DELETE /collections/{name}` — Delete a collection
 
-Verify config.py reads these values from environment variables.
+- **Document Management**
+  - `POST /collections/{name}/add-pdf` — Add a PDF document to a collection
+    - Parameters: `file` (PDF), `source_id` (optional), `tags` (optional)
 
-## Usage
+- **Source Management**
+  - `GET /collections/{collection_name}/sources` — List all sources in a collection
+  - `DELETE /collections/{collection_name}/sources/{source_id}` — Delete source content
+  - `GET /collections/{collection_name}/sources/{source_id}/chunks` — Get source chunks
 
-### Running the Server
+- **Querying**
+  - `GET /collections/{collection_name}/query` — Semantic search
+    - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
+  - `GET /collections/{collection_name}/answer` — Question answering
+    - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
 
-Run the FastAPI server with Uvicorn:
+## Run Locally
 
 ```bash
-uvicorn rag_tool.api:app --reload --host 0.0.0.0 --port 8000
+# Stop and rebuild
+docker compose down
+docker compose build
+docker compose up -d
+
+# Test
+curl http://localhost:8000/ -H "x-api-key: your-secret-key"
 ```
 
-Verify by browsing or curling:
+## Debugging
 
+View vector store content:
 ```bash
-curl http://localhost:8000/docs
+curl -X POST http://localhost:6333/collections/test/points/scroll \
+  -H "Content-Type: application/json" \
+  -d '{"limit": 10, "with_payload": true, "with_vector": false}' | jq .
 ```
 
-### Indexing Documents
+## Releases
 
-#### Local Development
-When running the server locally, you can index a folder of PDFs into a named collection via CLI or API:
+- 14 May 2025:
+    - FastAPI backend + llamaindex vector store
+    - Leverage llamaindex for text parsing, chunking and embedding
+    - Use OpenAI embedding models (via llamaindex interface)
+    - Use OpenAI LLMs (via llamaindex interface)
+    - Use PyMuPDF for extracting text from PDF
+    - Define API endpoints to:
+        - Create collection
+        - Delect collection
+        - List collection
+        - Add a PDF to a collection (which extracts the text, chunks it, gneerates embeddings and store them in the vector store)
+        - Retrieve chunks based a semantic matching and optionally use an LLM to answer a question
+    - Langgraph example script
 
-CLI (requires fire):
-```bash
-cd rag_tool
-python -m scripts.index_folder \
-    --collection mydocs \
-    --folder /path/to/pdfs
-```
+- 22 May 2025:
+    - Refactor code base
+    - Add health check
+    - Integrate qdrant as vector store
+    - Use SentenceSplitter text parser
+    - Track documents by source_id
+    - Support deleting the chunks corresponding to a source_id from vector store
+    - Avoid creating duplicate chunks when indexing the same document twice
+    - Add optional tags to document. Support filtering results by tags ("AND" combination)
+    - Track chunks by id
+    - Require API key to authenticate
+    - List source documents whose content has been indexed
+    - Return chunks for a given source document
+    - Return the following data along with each chunk: 
+        - Chunk id (called node_id)
+        - Chunk Text
+        - Source id
+        - Filen name
+        - Page number
+        - Tags
+    - Return similarity scores along with each chunk returned by the /query and /answer endpoints
+    - /query and /answer endpoints can filter by tags, source_id, page_number
+    - /query and /answer endpings can modify the top_k chunks returned
+    - Remove Langgraph example script?
 
-REST API:
-```bash
-curl -X POST http://localhost:8000/collections/mydocs/index \
-     -H "Content-Type: application/json" \
-     -d '{ "folder_path": "/path/to/pdfs" }'
-```
 
-#### Cloud Deployment
-When running in a Docker container or cloud environment, use the document-by-document indexing approach:
+## Backlog:
 
-1. Create a new collection:
-```bash
-curl -X POST http://localhost:8000/collections/mydocs
-```
-
-2. Add and index individual documents:
-```bash
-curl -X POST http://localhost:8000/collections/mydocs/documents \
-     -H "Content-Type: multipart/form-data" \
-     -F "file=@/path/to/document.pdf"
-```
-
-The response will confirm the number of documents indexed.
-
-### Querying Collections
-
-Raw similarity search:
-
-```bash
-curl "http://localhost:8000/collections/mydocs/query?q=your+keywords"
-```
-
-LLM-generated answer:
-
-```bash
-curl "http://localhost:8000/collections/mydocs/query?q=What+is+the+main+topic%3F&answer=true"
-```
-
-Responses include either text snippets with similarity scores or a generated answer.
-
-### Managing Collections
-
-List all collections with their statistics:
-
-```bash
-curl http://localhost:8000/collections
-```
-
-Response example:
-```json
-[
-  {
-    "name": "test",
-    "total_documents": 84,
-    "source_count": 3,
-    "average_chunk_size": 1442.33
-  }
-]
-```
-
-Delete a collection:
-
-```bash
-curl -X DELETE http://localhost:8000/collections/test
-```
-
-Response example:
-```json
-{
-  "status": "success",
-  "message": "Collection 'test' deleted successfully"
-}
-```
-
-### Inspecting Collections
-
-You can inspect your collections using the provided CLI tool:
-
-```bash
-# List all available collections
-python -m scripts.inspect_collection
-
-# Get detailed statistics for a specific collection
-python -m scripts.inspect_collection --collection=mydocs
-```
-
-The inspection tool provides information about documents, nodes, sources, and chunk sizes.
-
-### LangGraph Integration
-
-Create and register the RAGTool in your agent code:
-
-```python
-from rag_tool.langgraph_tool import RAGTool
-from langgraph import Agent
-
-agent = Agent(
-    tools=[
-        RAGTool(),  # uses RAG_API_URL from .env
-        # ... other tools
-    ],
-)
-```
-
-Your agent can now call `rag_query(collection="mydocs", query="...")` as a tool.
-
-For a complete example, see `scripts/test_langgraph.py`.
-
-## Development
-
-- Edit code under `rag_tool/`.
-- Add new endpoints in `api.py` or new features in `indexer.py` and `query_engine.py`.
-- Update `config.py` for additional settings.
-
-## Testing
-
-```bash
-pytest tests/
-```
-
-## Docker
-
-### Prerequisites
-- Docker Desktop installed and running
-- Git repository cloned locally
-
-### Building and Running
-```bash
-# Build the Docker image
-docker build -t rag_tool:latest .
-
-# Run with environment variables from .env file
-docker run -p 8000:8000 \
-  --env-file .env \
-  -v $(pwd)/data/vectorstores:/app/vectorstores \
-  -e VECTOR_STORE_PATH=/app/vectorstores \
-  rag_tool:latest
-
-# Or run with specific environment variables
-docker run -p 8000:8000 \
-  -e OPENAI_API_KEY=your_key_here \
-  -e EMBEDDING_MODEL=text-embedding-3-small \
-  -e LLM_MODEL=gpt-4o \
-  -v $(pwd)/data/vectorstores:/app/vectorstores \
-  -e VECTOR_STORE_PATH=/app/vectorstores \
-  rag_tool:latest
-```
-
-### Development with Docker
-For development with hot-reload:
-```bash
-# Mount the source code directory for live updates and vectorstores
-docker run -p 8000:8000 \
-  --env-file .env \
-  -v $(pwd):/app \
-  -e VECTOR_STORE_PATH=/app/data/vectorstores \
-  rag_tool:latest \
-  uvicorn rag_tool.api:app --host 0.0.0.0 --port 8000 --reload
-```
-
-## Contributing
-
-1. Fork this repo
-2. Create a feature branch (`git checkout -b feature/...`)
-3. Commit your changes
-4. Open a Pull Request
-
-Please follow PEP8 and include tests for new functionality.
-
-## License
-
-MIT
+- Index a URL
+- Add back Langgraph example script?
+- Provision documents for Cash project
+- Deployment to cloud
+- Support "extras" metadata (key-value pairs that users can use for their own needs, e.g. which link should I use to download a document)
+- Use a thread pool to connect to qdrant and make the FastAPI endpoints asynchronous
+- Explore better PDF text parsers as PyMuPDF does not fare very well on certain documents
+- Add integration tests
