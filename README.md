@@ -106,7 +106,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - List source documents whose content has been indexed
     - Return chunks for a given source document
     - Return the following data along with each chunk: 
-        - Chunk id (called node_id)
+        - Chunk id
         - Chunk Text
         - Source id
         - File name
@@ -122,9 +122,8 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
 ## Backlog:
 
 - Provision documents for Cash project
-- Deployment to cloud
-- Index a URL
+- Deploy to cloud
+- Support indexing of a URL
 - Add integration tests
-- Add back Langgraph example script?
-- Use a thread pool to connect to qdrant and make the FastAPI endpoints asynchronous
 - Explore better PDF text parsers as PyMuPDF does not fare very well on certain documents
+-  Create thread pool and use async requests
