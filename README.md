@@ -116,7 +116,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
         - Time at which document was uploaded
     - Return similarity scores along with each chunk returned by the /query and /answer endpoints
     - /query and /answer endpoints can filter by tags, source_id, page_number
-    - /query and /answer endpings can modify the top_k chunks returned
+    - /query and /answer endpoints can modify the top_k chunks returned
     - Remove Langgraph example script
 
 ## Backlog:
