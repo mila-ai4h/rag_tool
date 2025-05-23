@@ -91,7 +91,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
         - Retrieve chunks based a semantic matching and optionally use an LLM to answer a question
     - Langgraph example script
 
-- 22 May 2025:
+- 23 May 2025:
     - Refactor code base
     - Add health check
     - Integrate qdrant as vector store
@@ -107,7 +107,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - Return chunks for a given source document
     - Return the following data along with each chunk: 
         - Chunk id
-        - Chunk Text
+        - Chunk text
         - Source id
         - File name
         - Page number
@@ -123,7 +123,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
 
 - Provision documents for Cash project
 - Deploy to cloud
-- Support indexing of a URL
-- Add integration tests
+- Support indexing of a URL (workaround for now: print URL as a PDF)
+- Add basic integration tests
 - Explore better PDF text parsers as PyMuPDF does not fare very well on certain documents
--  Create thread pool and use async requests
+-  Requests are currently blocking: create thread pool and use async requests
