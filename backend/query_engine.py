@@ -175,7 +175,8 @@ class QueryEngine:
                     chunk_id=chunk_id,
                     text=text,
                     source_id=payload.get("source_id", ""),
-                    filename=payload.get("filename", ""),
+                    filename=payload.get("filename"),
+                    url=payload.get("url"),
                     type=payload.get("type", ""),
                     page_number=payload.get("page_number", 0),
                     tags=payload.get("tags", []),
@@ -239,38 +240,56 @@ class QueryEngine:
                 with_vectors=False
             )
 
-            # Convert points to SourceChunk objects
+            # Initialize metadata variables
             chunks = []
-            filename = ""
+            filename = None
+            url = None
+            type = "unknown"  # Default type
+            tags = []
+            extras = None
+            uploaded_at = ""
             pages = set()
 
+            # If we have results, get metadata from first chunk
+            if search_result:
+                first_point = search_result[0]
+                if first_point.payload:
+                    filename = first_point.payload.get("filename")
+                    url = first_point.payload.get("url")
+                    type = first_point.payload.get("type", "unknown")
+                    tags = first_point.payload.get("tags", [])
+                    extras = first_point.payload.get("extras")
+                    uploaded_at = first_point.payload.get("uploaded_at", "")
+
+            # Process all chunks
             for scored_point in search_result:
                 payload = scored_point.payload
+                if not payload:
+                    continue
+
                 node_content = payload.get("_node_content", "")
                 text, chunk_id = self._extract_text_from_node(node_content)
 
-                # Store filename from first chunk (should be same for all
-                # chunks)
-                if not filename:
-                    filename = payload.get("filename", "")
-                    type = payload.get("type", "")
-                    tags = payload.get("tags", [])
-                    extras = payload.get("extras", None)
-                    uploaded_at = payload.get("uploaded_at", "")
-
-                # Track page numbers
-                if "page_number" in payload:
-                    pages.add(payload["page_number"])
+                # Get page number, defaulting to 1 for URLs
+                page_num = payload.get("page_number")
+                if type == "url" and page_num is None:
+                    page_num = 1
+                elif page_num is None:
+                    page_num = 0
+                pages.add(page_num)
 
                 chunks.append(SourceChunk(
                     chunk_id=chunk_id,
                     text=text,
-                    page_number=payload.get("page_number", 0)
+                    page_number=page_num
                 ))
 
-            # Sort chunks by page number and then by chunk_id for stable
-            # ordering
+            # Sort chunks by page number and then by chunk_id for stable ordering
             chunks.sort(key=lambda x: (x.page_number, x.chunk_id))
+
+            # For URLs, ensure we have at least one page
+            if type == "url" and not pages:
+                pages = {1}
 
             logger.info(
                 "Found %d chunks for source_id=%s across %d pages",
@@ -282,6 +301,7 @@ class QueryEngine:
                 total=len(chunks),
                 source_id=source_id,
                 filename=filename,
+                url=url,
                 total_pages=len(pages),
                 type=type,
                 tags=tags,
@@ -305,10 +325,16 @@ class QueryEngine:
             Generated answer from LLM
         """
         # Prepare the context from chunks
-        context = "\n\n".join([
-            f"Chunk from page {chunk.page_number} of {chunk.filename}:\n{chunk.text}"
-            for chunk in chunks
-        ])
+        context_parts = []
+        for chunk in chunks:
+            source_info = f"Chunk from "
+            if chunk.type == "pdf":
+                source_info += f"page {chunk.page_number} of {chunk.filename}"
+            else:  # url
+                source_info += f"{chunk.url}"
+            context_parts.append(f"{source_info}:\n{chunk.text}")
+
+        context = "\n\n".join(context_parts)
 
         # Create the prompt
         prompt = f"""We have provided context information below.

@@ -41,7 +41,8 @@ class CollectionNotFound(BaseModel):
 
 class SourceInfo(BaseModel):
     source_id: str
-    filename: str
+    filename: Optional[str] = None  # None for URLs
+    url: Optional[str] = None  # None for PDFs
     type: str = "pdf"
     first_page: int
     last_page: int
@@ -62,7 +63,8 @@ class SourceList(BaseModel):
 class DocumentIndexed(BaseModel):
     collection_name: str
     source_id: str
-    filename: str  # Original filename of the uploaded document
+    filename: Optional[str] = None  # None for URLs
+    url: Optional[str] = None  # None for PDFs
     type: str = "pdf"
     pages_indexed: int
     chunks_created: int
@@ -92,7 +94,8 @@ class SourceChunksResponse(BaseModel):
     chunks: List[SourceChunk]
     total: int
     source_id: str
-    filename: str
+    filename: Optional[str] = None  # None for URLs
+    url: Optional[str] = None  # None for PDFs
     total_pages: int
     type: str
     tags: List[str]
@@ -109,7 +112,8 @@ class QueryResult(BaseModel):
     chunk_id: str
     text: str
     source_id: str
-    filename: str
+    filename: Optional[str] = None  # None for URLs
+    url: Optional[str] = None  # None for PDFs
     type: str
     page_number: int
     tags: List[str]
@@ -156,7 +160,8 @@ class SourceListError(BaseModel):
 
 
 class DocumentEmptyError(BaseModel):
-    """Model for when a PDF document has no content."""
+    """Model for when a document has no content."""
     collection_name: str
-    filename: str
-    message: str = "No text content found in PDF file"
+    filename: Optional[str] = None  # None for URLs
+    url: Optional[str] = None  # None for PDFs
+    message: str = "No text content found in document"

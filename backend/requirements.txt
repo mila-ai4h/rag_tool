@@ -24,7 +24,6 @@ qdrant-client
 
 # Document Processing
 PyMuPDF
-
-# Langgraph (required for langgraph test script)
-langgraph
-grandalf
+bs4
+requests
+readability-lxml
