@@ -24,7 +24,4 @@ qdrant-client
 
 # Document Processing
 PyMuPDF
-bs4
-requests
-readability-lxml
-playwright
+trafilatura

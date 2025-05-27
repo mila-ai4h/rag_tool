@@ -11,8 +11,7 @@ from typing import Optional, Tuple, List, Dict, Any, Union
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 import requests
-from bs4 import BeautifulSoup
-from readability import Document as ReadabilityDoc
+import trafilatura
 
 from .models import (
     CollectionCreated,
@@ -211,21 +210,6 @@ class Indexer:
             len(documents))
         return documents, len(documents)
 
-    def _render_with_headless(self, url: str) -> str:
-        """
-        Render the given URL via Playwright and return fully rendered HTML.
-        """
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"]
-            )
-            page = browser.new_page()
-            page.goto(url, wait_until="networkidle")
-            html = page.content()
-            browser.close()
-            return html
-
     def _extract_document_from_url(
         self,
         url: str,
@@ -234,114 +218,72 @@ class Indexer:
         uploaded_at: str,
         extras: Optional[Dict[str, Any]] = None
     ) -> Document:
+        """Extract text content from a URL using trafilatura.
+        
+        Args:
+            url: The URL to extract content from
+            source_id: Unique identifier for the source
+            tags: List of tags to associate with the content
+            uploaded_at: ISO format timestamp of when the content was uploaded
+            extras: Optional dictionary of additional metadata
+            
+        Returns:
+            Document: A Document object containing the extracted text and metadata
+            
+        Raises:
+            ValueError: If no text content could be extracted from the URL
+            requests.RequestException: If the URL could not be fetched
+        """
         logger.info("Starting URL extraction: %s", url)
 
-        # 1) Initial fetch via requests
         try:
-            resp = requests.get(
-                url,
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=10
+            # Download and extract content using trafilatura
+            downloaded = trafilatura.fetch_url(url)
+            if not downloaded:
+                raise ValueError(f"Could not download content from {url}")
+                
+            # Extract metadata first to get the title
+            metadata = trafilatura.metadata.extract_metadata(downloaded)
+            title = metadata.title if metadata else None
+                
+            text = trafilatura.extract(
+                downloaded,
+                include_comments=False,
+                favor_precision=True,
+                include_tables=True,
+                include_images=False,
+                include_links=False,
+                include_formatting=True
             )
-            resp.raise_for_status()
-            html_source = resp.text
-            logger.info("Fetched via requests: %s", url)
+            
+            if not text or len(text.strip()) < 100:  # Basic validation
+                raise ValueError(f"No substantial text content found in {url}")
+                
+            # Add title if available
+            if title:
+                text = f"{title}\n\n{text}"
+                
+            logger.info("Successfully extracted content from %s (length=%d)", url, len(text))
+            
+            return Document(
+                text=text,
+                metadata={
+                    "source_id": source_id,
+                    "url": url,
+                    "type": "url",
+                    "tags": tags,
+                    "extras": extras,
+                    "uploaded_at": uploaded_at
+                }
+            )
+            
+        except requests.RequestException as e:
+            logger.error("Failed to fetch URL=%s: %s", url, str(e))
+            raise
         except Exception as e:
-            logger.warning("Requests fetch failed for %s: %s", url, e)
-            html_source = self._render_with_headless(url)
+            logger.error("Error extracting content from URL=%s: %s", url, str(e))
+            raise ValueError(f"Failed to extract content from {url}: {str(e)}")
 
-        soup = BeautifulSoup(html_source, 'html.parser')
-
-        # Remove boilerplate tags
-        for tag_name in [
-            "script", "style", "nav", "header", "footer",
-            "form", "aside", "iframe", "noscript", "meta", "link"
-        ]:
-            for tag in soup.find_all(tag_name):
-                tag.decompose()
-
-        # 2) Try readability for clean extraction
-        try:
-            rd = ReadabilityDoc(html_source)
-            summary_html = rd.summary()
-            rd_soup = BeautifulSoup(summary_html, 'html.parser')
-            text_body = rd_soup.get_text(separator='\n', strip=True)
-            title = rd.title().strip() if rd.title() else ''
-            if text_body:
-                full_text = f"{title}\n\n{text_body}" if title else text_body
-                logger.info("Readability extraction succeeded for %s", url)
-                return Document(
-                    text=full_text,
-                    metadata={
-                        "source_id": source_id,
-                        "url": url,
-                        "type": "url",
-                        "tags": tags,
-                        "extras": extras,
-                        "uploaded_at": uploaded_at
-                    }
-                )
-        except Exception:
-            logger.debug("Readability extraction failed for %s", url)
-
-        # 3) Heuristic: pick the largest text-heavy block
-        def find_main_block(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
-            candidates = soup.find_all(['main', 'article', 'section', 'div'], recursive=True)
-            best = None
-            best_len = 0
-            for el in candidates:
-                text = el.get_text(separator=' ', strip=True)
-                if len(text) < 200:
-                    continue
-                # skip link-heavy blocks
-                links = el.find_all('a')
-                if links and len(''.join(a.get_text() for a in links)) / len(text) > 0.3:
-                    continue
-                if len(text) > best_len:
-                    best, best_len = el, len(text)
-            return best or soup.body or soup
-
-        main_block = find_main_block(soup)
-        raw_text = main_block.get_text(separator='\n', strip=True)
-        lines = [line for line in raw_text.splitlines() if line.strip()]
-        clean_text = '\n\n'.join(lines)
-
-        # 4) Fallback to headless if too little text
-        if len(clean_text) < 200:
-            logger.info("Heuristic extraction too small, using headless for %s", url)
-            rendered = self._render_with_headless(url)
-            soup = BeautifulSoup(rendered, 'html.parser')
-            for tag_name in [
-                "script", "style", "nav", "header", "footer",
-                "form", "aside", "iframe", "noscript", "meta", "link"
-            ]:
-                for tag in soup.find_all(tag_name):
-                    tag.decompose()
-            main_block = find_main_block(soup)
-            raw_text = main_block.get_text(separator='\n', strip=True)
-            lines = [ln for ln in raw_text.splitlines() if ln.strip()]
-            clean_text = '\n\n'.join(lines)
-
-        if not clean_text:
-            raise ValueError(f"No text could be extracted from {url}")
-
-        title_tag = soup.title.string.strip() if soup.title else ''
-        if title_tag:
-            clean_text = f"{title_tag}\n\n{clean_text}"
-
-        logger.info("Extraction succeeded for %s (length=%d)", url, len(clean_text))
-        return Document(
-            text=clean_text,
-            metadata={
-                "source_id": source_id,
-                "url": url,
-                "type": "url",
-                "tags": tags,
-                "extras": extras,
-                "uploaded_at": uploaded_at
-            }
-        )
-     
     def _delete_source_chunks(
         self,
         collection_name: str,

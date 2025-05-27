@@ -129,3 +129,4 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
 - Add basic integration tests
 - Explore better PDF text parsers as PyMuPDF does not fare very well on certain documents
 - Requests are currently blocking: create thread pool and use async requests
+- Support hybrid search
