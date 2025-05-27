@@ -2,6 +2,7 @@ import json
 import logging
 from typing import List, Optional, Union
 
+from config import OPENAI_API_KEY
 from llama_index.core.settings import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -40,7 +41,7 @@ class QueryEngine:
         """
         self.client = client
         self.embed_model = OpenAIEmbedding(model=embed_model)
-        self.llm_client = OpenAI()
+        self.llm_client = OpenAI(api_key=OPENAI_API_KEY)
         self.embed_dimensions = embed_dimensions
         self.default_top_k = default_top_k
         self.llm_model = llm_model

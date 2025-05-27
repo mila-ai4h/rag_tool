@@ -1,9 +1,9 @@
 import os
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 # Load environment variables from .env
-load_dotenv()
+load_dotenv(find_dotenv(".env"))
 
 # API settings
 API_KEY = os.getenv("API_KEY", "your-secret-key")
@@ -11,7 +11,7 @@ API_KEY_NAME = "x-api-key"
 
 # Qdrant settings
 QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 
 # Node splitter settings
 CHUNK_SIZE = 512

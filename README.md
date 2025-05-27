@@ -69,7 +69,7 @@ docker compose build
 docker compose up -d
 
 # Test
-curl http://localhost:8000/ -H "x-api-key: your-secret-key"
+curl http://localhost:8080/ -H "x-api-key: your-secret-key"
 ```
 
 ## Debugging
