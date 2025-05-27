@@ -42,6 +42,8 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
 - **Document Management**
   - `POST /collections/{name}/add-pdf` — Add a PDF document to a collection
     - Parameters: `file` (PDF), `source_id` (optional), `tags` (optional), `extras` (optional)
+  - `POST /collections/{name}/add-url` — Add content from a URL to a collection
+    - Parameters: `url` (string), `source_id` (optional), `tags` (optional), `extras` (optional)
 
 - **Source Management**
   - `GET /collections/{collection_name}/sources` — List all sources in a collection
@@ -120,7 +122,8 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - Remove Langgraph example script
 
 - 26 May 2025:
-    - Support indexing of a URL
+    - Add support for indexing web content via URLs
+    - New endpoint `/collections/{name}/add-url` to process and index content from web pages
     - Add provisioning script and data for CASH project
 
 ## Backlog:
