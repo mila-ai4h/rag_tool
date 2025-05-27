@@ -21,6 +21,10 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 - **AI Models**: OpenAI
 - **Language**: Python 3.x
 
+## Infrastructure
+![Infrastructure Diagram](docs/infrastructure.png)
+
+
 ## API Documentation
 
 Interactive API documentation is available at `http://localhost:8000/docs` when running locally.
