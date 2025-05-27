@@ -27,3 +27,4 @@ PyMuPDF
 bs4
 requests
 readability-lxml
+playwright

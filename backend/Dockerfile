@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y \
 
 # 1) Copy only the req file & install
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    playwright install --with-deps
 
 # 2) Copy the rest of your repo
 COPY . .

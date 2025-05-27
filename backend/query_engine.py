@@ -284,7 +284,8 @@ class QueryEngine:
                     page_number=page_num
                 ))
 
-            # Sort chunks by page number and then by chunk_id for stable ordering
+            # Sort chunks by page number and then by chunk_id for stable
+            # ordering
             chunks.sort(key=lambda x: (x.page_number, x.chunk_id))
 
             # For URLs, ensure we have at least one page

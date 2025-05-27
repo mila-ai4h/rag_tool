@@ -353,7 +353,8 @@ def add_url(
 
         return result
     except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {str(e)}")
+        raise HTTPException(status_code=400,
+                            detail=f"Failed to fetch URL: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -9,6 +9,7 @@ import uuid
 import logging
 from typing import Optional, Tuple, List, Dict, Any, Union
 from datetime import datetime
+from playwright.sync_api import sync_playwright
 import requests
 from bs4 import BeautifulSoup
 from readability import Document as ReadabilityDoc
@@ -210,130 +211,144 @@ class Indexer:
             len(documents))
         return documents, len(documents)
 
-    def _extract_document_from_url(self,
-                                  url: str,
-                                  source_id: str,
-                                  tags: List[str],
-                                  uploaded_at: str,
-                                  extras: Optional[Dict[str, Any]] = None) -> Document:
-        """Fetch the given URL, extract its main text, and wrap it in a llamaindex Document.
-        
-        Args:
-            url: The URL to fetch and extract content from
-            source_id: Unique identifier for the source
-            tags: List of tags associated with the content
-            uploaded_at: ISO format timestamp of when the content was uploaded
-            extras: Optional dictionary of additional metadata
-            
-        Returns:
-            Document: A llamaindex Document containing the extracted text and metadata
-            
-        Raises:
-            ValueError: If no text could be extracted from the URL
-            requests.RequestException: If the URL could not be fetched
+    def _render_with_headless(self, url: str) -> str:
         """
-        logger.info("URL extraction start: %s", url)
+        Render the given URL via Playwright and return fully rendered HTML.
+        """
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            page = browser.new_page()
+            page.goto(url, wait_until="networkidle")
+            html = page.content()
+            browser.close()
+            return html
 
-        resp = requests.get(
-            url,
-            headers={
-                'User-Agent': 'Mozilla/5.0',
-                'Accept': 'text/html,application/xhtml+xml'
-            },
-            timeout=10
-        )
-        resp.raise_for_status()
+    def _extract_document_from_url(
+        self,
+        url: str,
+        source_id: str,
+        tags: List[str],
+        uploaded_at: str,
+        extras: Optional[Dict[str, Any]] = None
+    ) -> Document:
+        logger.info("Starting URL extraction: %s", url)
 
-        # Let BeautifulSoup sniff the encoding for any later operations
-        soup = BeautifulSoup(resp.content, 'html.parser')
-
-        # 1) Try Readability on the decoded text
+        # 1) Initial fetch via requests
         try:
-            rd = ReadabilityDoc(resp.text)           # <<-- use .text, not .content
+            resp = requests.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10
+            )
+            resp.raise_for_status()
+            html_source = resp.text
+            logger.info("Fetched via requests: %s", url)
+        except Exception as e:
+            logger.warning("Requests fetch failed for %s: %s", url, e)
+            html_source = self._render_with_headless(url)
+
+        soup = BeautifulSoup(html_source, 'html.parser')
+
+        # Remove boilerplate tags
+        for tag_name in [
+            "script", "style", "nav", "header", "footer",
+            "form", "aside", "iframe", "noscript", "meta", "link"
+        ]:
+            for tag in soup.find_all(tag_name):
+                tag.decompose()
+
+        # 2) Try readability for clean extraction
+        try:
+            rd = ReadabilityDoc(html_source)
             summary_html = rd.summary()
-            body_text    = BeautifulSoup(summary_html, 'html.parser') \
-                            .get_text(separator='\n')
-            title = rd.title().strip()
-            if body_text.strip():
-                logger.info("Readability succeeded for %s", url)
-                full_text = "\n\n".join(filter(None, [title, body_text]))
+            rd_soup = BeautifulSoup(summary_html, 'html.parser')
+            text_body = rd_soup.get_text(separator='\n', strip=True)
+            title = rd.title().strip() if rd.title() else ''
+            if text_body:
+                full_text = f"{title}\n\n{text_body}" if title else text_body
+                logger.info("Readability extraction succeeded for %s", url)
                 return Document(
                     text=full_text,
                     metadata={
                         "source_id": source_id,
-                        "filename": None,  # URLs don't have filenames
                         "url": url,
                         "type": "url",
-                        "page_number": 1,  # URLs are treated as single-page documents
                         "tags": tags,
                         "extras": extras,
                         "uploaded_at": uploaded_at
                     }
                 )
         except Exception:
-            logger.debug("Readability failed or malformed HTML — falling back")
+            logger.debug("Readability extraction failed for %s", url)
 
-        # 2) Manual cleanup of boilerplate
-        for tag in soup(["script","style","nav","header","footer",
-                        "form","iframe","noscript","meta","link"]):
-            tag.decompose()
+        # 3) Heuristic: pick the largest text-heavy block
+        def find_main_block(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
+            candidates = soup.find_all(['main', 'article', 'section', 'div'], recursive=True)
+            best = None
+            best_len = 0
+            for el in candidates:
+                text = el.get_text(separator=' ', strip=True)
+                if len(text) < 200:
+                    continue
+                # skip link-heavy blocks
+                links = el.find_all('a')
+                if links and len(''.join(a.get_text() for a in links)) / len(text) > 0.3:
+                    continue
+                if len(text) > best_len:
+                    best, best_len = el, len(text)
+            return best or soup.body or soup
 
-        # 3) Try a list of selectors, including the ASP.NET container you observed
-        content_selectors = [
-            'main', 'article', '[role="main"]',
-            '.content', '#content',
-            '.entry-content', '.page-content',
-            '#page-content', '.container', '.container-fluid',
-            '#ctl00_PlaceHolderMain',             # older ASP.NET
-            '#plhContenuHtml',                    # Québec gov page
-        ]
+        main_block = find_main_block(soup)
+        raw_text = main_block.get_text(separator='\n', strip=True)
+        lines = [line for line in raw_text.splitlines() if line.strip()]
+        clean_text = '\n\n'.join(lines)
 
-        main = None
-        for sel in content_selectors:
-            main = soup.select_one(sel)
-            if main:
-                logger.info("Matched content selector: %s", sel)
-                break
+        # 4) Fallback to headless if too little text
+        if len(clean_text) < 200:
+            logger.info("Heuristic extraction too small, using headless for %s", url)
+            rendered = self._render_with_headless(url)
+            soup = BeautifulSoup(rendered, 'html.parser')
+            for tag_name in [
+                "script", "style", "nav", "header", "footer",
+                "form", "aside", "iframe", "noscript", "meta", "link"
+            ]:
+                for tag in soup.find_all(tag_name):
+                    tag.decompose()
+            main_block = find_main_block(soup)
+            raw_text = main_block.get_text(separator='\n', strip=True)
+            lines = [ln for ln in raw_text.splitlines() if ln.strip()]
+            clean_text = '\n\n'.join(lines)
 
-        # 4) As a last resort, use <body>
-        if not main:
-            main = soup.body or soup
-            logger.info("Falling back to <body> for %s", url)
+        if not clean_text:
+            raise ValueError(f"No text could be extracted from {url}")
 
-        raw = main.get_text(separator='\n')
-        # collapse and strip
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        text = "\n".join(lines)
+        title_tag = soup.title.string.strip() if soup.title else ''
+        if title_tag:
+            clean_text = f"{title_tag}\n\n{clean_text}"
 
-        if not text:
-            raise ValueError(f"No text extracted from {url}")
-
-        # Prepend <title> if you'd like:
-        title_tag = (soup.title.string or "").strip()
-        full_text = f"{title_tag}\n\n{text}" if title_tag else text
-
-        logger.info("Manual extraction succeeded for %s (length=%d)", url, len(full_text))
+        logger.info("Extraction succeeded for %s (length=%d)", url, len(clean_text))
         return Document(
-            text=full_text,
+            text=clean_text,
             metadata={
                 "source_id": source_id,
-                "filename": None,  # URLs don't have filenames
                 "url": url,
                 "type": "url",
-                "page_number": 1,  # URLs are treated as single-page documents
                 "tags": tags,
                 "extras": extras,
                 "uploaded_at": uploaded_at
             }
         )
-
+     
     def _delete_source_chunks(
         self,
         collection_name: str,
         source_id: str
     ) -> Union[None, CollectionNotFound, DocumentError]:
         """Delete all chunks for a given source_id from the collection.
-        
+
         Returns:
             None: If deletion was successful
             CollectionNotFound: If the collection does not exist
@@ -341,7 +356,8 @@ class Indexer:
         """
         try:
             # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
+            existing = {
+                c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
@@ -413,7 +429,8 @@ class Indexer:
             logger.info("Using upload timestamp: %s", uploaded_at)
 
             # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
+            existing = {
+                c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
@@ -442,17 +459,22 @@ class Indexer:
                 logger.info("Processing embedding batch %d-%d/%d",
                             i + 1, min(i + batch_size, len(nodes)), len(nodes))
                 texts = [node.text for node in batch]
-                embeddings = Settings.embed_model.get_text_embedding_batch(texts)
+                embeddings = Settings.embed_model.get_text_embedding_batch(
+                    texts)
                 for node, embedding in zip(batch, embeddings):
                     node.embedding = embedding
                 vector_store.add(batch)
 
             # Get source identifier (filename or url) from document metadata
-            source_identifier = document.metadata.get("filename") or document.metadata.get("url")
+            source_identifier = document.metadata.get(
+                "filename") or document.metadata.get("url")
             if not source_identifier:
-                raise ValueError("Document metadata must contain either filename or url")
+                raise ValueError(
+                    "Document metadata must contain either filename or url")
 
-            logger.info("Successfully completed document indexing for %s", source_identifier)
+            logger.info(
+                "Successfully completed document indexing for %s",
+                source_identifier)
             return DocumentIndexed(
                 collection_name=collection_name,
                 source_id=source_id,
@@ -496,7 +518,8 @@ class Indexer:
             tags = tags or []
 
             # Delete any existing chunks for this source_id
-            delete_result = self._delete_source_chunks(collection_name, source_id)
+            delete_result = self._delete_source_chunks(
+                collection_name, source_id)
             if delete_result is not None:
                 return delete_result
 
@@ -524,7 +547,7 @@ class Indexer:
                     tags=tags,
                     extras=extras
                 )
-                
+
                 if isinstance(result, DocumentIndexed):
                     total_chunks += result.chunks_created
                 else:
@@ -532,8 +555,8 @@ class Indexer:
                     return result
 
             # Create a success response with the total chunks
-            logger.info("Successfully indexed %d pages from PDF file=%s with %d total chunks", 
-                       pages_count, filename, total_chunks)
+            logger.info("Successfully indexed %d pages from PDF file=%s with %d total chunks",
+                        pages_count, filename, total_chunks)
             return DocumentIndexed(
                 collection_name=collection_name,
                 source_id=source_id,
@@ -596,7 +619,8 @@ class Indexer:
             tags = tags or []
 
             # Delete any existing chunks for this source_id
-            delete_result = self._delete_source_chunks(collection_name, source_id)
+            delete_result = self._delete_source_chunks(
+                collection_name, source_id)
             if delete_result is not None:
                 return delete_result
 
