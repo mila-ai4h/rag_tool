@@ -6,6 +6,7 @@ import os
 import logging
 import json
 from typing import Optional, List, Dict, Any, Union
+import requests
 
 from .config import (
     API_KEY,
@@ -255,6 +256,107 @@ def add_pdf(
             os.unlink(temp_path)
         except BaseException:
             pass  # Ignore cleanup errors
+
+
+@app.post("/collections/{name}/add-url",
+          response_model=Union[DocumentIndexed,
+                               DocumentEmptyError,
+                               CollectionNotFound],
+          dependencies=[Depends(verify_api_key)],
+          )
+def add_url(
+    name: str,
+    url: str = Form(
+        ...,
+        description="The URL to fetch and index"),
+    source_id: Optional[str] = Form(
+        None,
+        description="Optional custom source ID. If not provided, a UUID will be generated"),
+    tags: Optional[str] = Form(
+        None,
+        description="""Comma-separated list of tags to associate with the document.
+        Example: "engineering,2024,project-x"
+        Spaces around commas are automatically trimmed."""),
+    extras: Optional[str] = Form(
+        None,
+        description="""Optional JSON string containing additional metadata as key-value pairs.
+        Must be a valid JSON object with simple key-value pairs only.
+        Keys must be strings, values must be strings, numbers, booleans, or null.
+        Examples:
+        - Simple: {"author": "John Doe"}
+        - Multiple fields: {"author": "John Doe", "version": 1.0, "is_draft": false}
+
+            Note:
+            - Use double quotes for strings, not single quotes
+            - No nested objects or arrays allowed
+            - No complex types allowed"""),
+):
+    """
+    Fetch and index content from a URL into the specified collection.
+
+    The url content will be fetched, cleaned, split into chunks, embedded, and stored in the vector database.
+    Each chunk will inherit the document's metadata (tags, extras, etc.).
+
+    Args:
+        name: Name of the collection to add the document to
+        url: The URL to fetch and index
+        source_id: Optional custom source ID. If not provided, a UUID will be generated
+        tags: Optional comma-separated list of tags. Example: "engineering,2024,project-x"
+        extras: Optional JSON string with additional metadata. Must be a valid JSON object
+               with simple key-value pairs only (strings, numbers, booleans, or null).
+               Example: {"author": "John Doe", "version": 1.0}
+
+    Returns:
+        DocumentIndexed: Information about the indexed document
+        DocumentEmptyError: If the url has no text content (400)
+        CollectionNotFound: If the collection does not exist (404)
+
+    Raises:
+        HTTPException:
+            - 400: If the URL is invalid or unreachable
+            - 400: If extras is not a valid JSON string
+            - 400: If extras contains complex types (nested objects, arrays)
+            - 400: If the url has no text content
+            - 404: If the collection does not exist
+            - 500: If there are any processing errors
+    """
+    # Parse tags
+    tag_list = [tag.strip() for tag in tags.split(',')] if tags else []
+
+    # Parse extras if provided
+    extras_dict = None
+    if extras:
+        try:
+            extras_dict = json.loads(extras)
+            validate_extras(extras_dict)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400,
+                                detail="extras must be a valid JSON string")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        # Index the URL
+        result = indexer.index_url(
+            name,
+            url,
+            source_id,
+            tag_list,
+            extras_dict)
+
+        if isinstance(result, DocumentError):
+            raise HTTPException(status_code=500, detail=result.error)
+        if isinstance(result, DocumentEmptyError):
+            raise HTTPException(status_code=400, detail=result.message)
+        if isinstance(result, CollectionNotFound):
+            raise HTTPException(status_code=404, detail=result.message)
+
+        return result
+    except requests.RequestException as e:
+        raise HTTPException(status_code=400,
+                            detail=f"Failed to fetch URL: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get(
