@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright
 import requests
 import trafilatura
 
-from .models import (
+from models import (
     CollectionCreated,
     CollectionExists,
     CollectionError,

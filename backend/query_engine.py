@@ -7,7 +7,7 @@ import logging
 import json
 from openai import OpenAI
 
-from .models import (
+from models import (
     QueryResult,
     SourceChunk,
     QueryResponse,

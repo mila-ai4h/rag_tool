@@ -1,3 +1,4 @@
+import uvicorn
 from fastapi import FastAPI, Security, HTTPException, Depends, UploadFile, File, Form, Query
 from fastapi.security.api_key import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
@@ -5,10 +6,10 @@ import tempfile
 import os
 import logging
 import json
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, Dict, Any, Union
 import requests
 
-from .config import (
+from config import (
     API_KEY,
     API_KEY_NAME,
     QDRANT_HOST,
@@ -20,7 +21,7 @@ from .config import (
     DEFAULT_TOP_K,
     LLM_MODEL,
 )
-from .indexer import (
+from indexer import (
     Indexer,
     CollectionCreated,
     CollectionExists,
@@ -36,7 +37,7 @@ from .indexer import (
     SourceList,
     SourceListError,
 )
-from .query_engine import QueryEngine, QueryResponse, SourceChunksResponse, AnswerResponse
+from query_engine import QueryEngine, QueryResponse, SourceChunksResponse, AnswerResponse
 from qdrant_client import QdrantClient
 
 # Configure logging
@@ -576,3 +577,7 @@ def answer_question(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -10,7 +10,7 @@ API_KEY_NAME = "x-api-key"
 
 # Qdrant settings
 QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
 # Node splitter settings
 CHUNK_SIZE = 512
@@ -25,3 +25,4 @@ DEFAULT_TOP_K = 5
 
 # LLM settings
 LLM_MODEL = "gpt-4o"  # OpenAI model to use for answer generation
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key")
