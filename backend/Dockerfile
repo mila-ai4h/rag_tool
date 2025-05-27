@@ -1,17 +1,25 @@
+# Use an official Python runtime as a base image.
 FROM python:3.11-slim
 
+# Set environment variables.
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Set the working directory.
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the requirements file into the container.
+COPY backend/requirements.txt /app/
 
-# 1) Copy only the req file & install
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# uv pip
+RUN pip install uv
+RUN pip install --upgrade pip setuptools wheel
+RUN uv pip install -r requirements.txt --system
 
-# 2) Copy the rest of your repo
-COPY . .
+# Copy the entire backend folder (including your API code, celery tasks, etc.) into the container.
+COPY backend/ /app/
 
-CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose the port Cloud Run (or your local environment) expects.
+EXPOSE 8080
+
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080"]

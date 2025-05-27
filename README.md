@@ -27,7 +27,7 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 
 ## API Documentation
 
-Interactive API documentation is available at `http://localhost:8000/docs` when running locally.
+Interactive API documentation is available at `http://localhost:8080/docs` when running locally.
 
 ### Authentication
 
@@ -69,7 +69,7 @@ docker compose build
 docker compose up -d
 
 # Test
-curl http://localhost:8000/ -H "x-api-key: your-secret-key"
+curl http://localhost:8080/ -H "x-api-key: your-secret-key"
 ```
 
 ## Debugging
@@ -111,7 +111,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - Require API key to authenticate
     - List source documents whose content has been indexed
     - Return chunks for a given source document
-    - Return the following data along with each chunk: 
+    - Return the following data along with each chunk:
         - Chunk id
         - Chunk text
         - Source id
