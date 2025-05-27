@@ -1,4 +1,5 @@
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
 
 # Collection Management Models
@@ -33,8 +34,10 @@ class CollectionExists(BaseModel):
 
 class CollectionNotFound(BaseModel):
     """Model for when a collection does not exist."""
+
     collection_name: str
     message: str = "Collection not found"
+
 
 # Document and Source Management Models
 
@@ -84,6 +87,7 @@ class SourceDeleted(BaseModel):
 
 class SourceChunk(BaseModel):
     """Model for a single source chunk, without similarity score."""
+
     chunk_id: str
     text: str
     page_number: int
@@ -91,6 +95,7 @@ class SourceChunk(BaseModel):
 
 class SourceChunksResponse(BaseModel):
     """Model for retrieving all chunks from a source."""
+
     chunks: List[SourceChunk]
     total: int
     source_id: str
@@ -109,6 +114,7 @@ class SourceChunksResponse(BaseModel):
 
 class QueryResult(BaseModel):
     """Model for a single query result."""
+
     chunk_id: str
     text: str
     source_id: str
@@ -125,15 +131,18 @@ class QueryResult(BaseModel):
 
 class QueryResponse(BaseModel):
     """Model for the complete query response."""
+
     results: List[QueryResult]
     total: int
 
 
 class AnswerResponse(BaseModel):
     """Model for the answer response."""
+
     answer: str
     chunks: List[QueryResult]
     total_chunks: int
+
 
 # Error Models
 
@@ -161,6 +170,7 @@ class SourceListError(BaseModel):
 
 class DocumentEmptyError(BaseModel):
     """Model for when a document has no content."""
+
     collection_name: str
     filename: Optional[str] = None  # None for URLs
     url: Optional[str] = None  # None for PDFs

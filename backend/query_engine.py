@@ -1,20 +1,20 @@
-from typing import List, Optional, Union
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.core.settings import Settings
-from llama_index.vector_stores.qdrant import QdrantVectorStore
-from qdrant_client.http.models import Filter, FieldCondition, MatchValue, FilterSelector
-import logging
 import json
-from openai import OpenAI
+import logging
+from typing import List, Optional, Union
 
+from llama_index.core.settings import Settings
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.vector_stores.qdrant import QdrantVectorStore
 from models import (
+    AnswerResponse,
+    CollectionNotFound,
+    QueryResponse,
     QueryResult,
     SourceChunk,
-    QueryResponse,
     SourceChunksResponse,
-    AnswerResponse,
-    CollectionNotFound
 )
+from openai import OpenAI
+from qdrant_client.http.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class QueryEngine:
         embed_model: str = "text-embedding-3-small",
         embed_dimensions: int = 1536,
         default_top_k: int = 5,
-        llm_model: str = "gpt-4"
+        llm_model: str = "gpt-4",
     ):
         """Initialize the query engine with a Qdrant client and configuration parameters.
 
@@ -49,7 +49,8 @@ class QueryEngine:
             embed_model,
             embed_dimensions,
             default_top_k,
-            llm_model)
+            llm_model,
+        )
 
     def _extract_text_from_node(self, node_json: str) -> tuple[str, str]:
         """Extract the actual text content and node ID from a LlamaIndex TextNode JSON string."""
@@ -60,9 +61,9 @@ class QueryEngine:
             # LlamaIndex uses "id_" for the node ID
             chunk_id = node_data.get("id_", "")
             # Clean up any escaped newlines and other escape sequences
-            text = text.encode().decode('unicode_escape')
+            text = text.encode().decode("unicode_escape")
             # Remove any leading/trailing whitespace and normalize newlines
-            text = text.strip().replace('\r\n', '\n')
+            text = text.strip().replace("\r\n", "\n")
             return text, chunk_id
         except (json.JSONDecodeError, KeyError) as e:
             logger.error("Error parsing node JSON: %s", str(e))
@@ -72,7 +73,7 @@ class QueryEngine:
         self,
         tags: Optional[List[str]] = None,
         source_id: Optional[str] = None,
-        page_number: Optional[int] = None
+        page_number: Optional[int] = None,
     ) -> Optional[Filter]:
         """Build a Qdrant filter for tags, source_id, and page_number."""
         conditions = []
@@ -81,26 +82,17 @@ class QueryEngine:
             # For each tag, we want to ensure it exists in the tags array
             for tag in tags:
                 conditions.append(
-                    FieldCondition(
-                        key="tags",
-                        match=MatchValue(value=tag)
-                    )
+                    FieldCondition(key="tags", match=MatchValue(value=tag))
                 )
 
         if source_id:
             conditions.append(
-                FieldCondition(
-                    key="source_id",
-                    match=MatchValue(value=source_id)
-                )
+                FieldCondition(key="source_id", match=MatchValue(value=source_id))
             )
 
         if page_number is not None:
             conditions.append(
-                FieldCondition(
-                    key="page_number",
-                    match=MatchValue(value=page_number)
-                )
+                FieldCondition(key="page_number", match=MatchValue(value=page_number))
             )
 
         return Filter(must=conditions) if conditions else None
@@ -112,7 +104,7 @@ class QueryEngine:
         top_k: int = None,
         tags: Optional[List[str]] = None,
         source_id: Optional[str] = None,
-        page_number: Optional[int] = None
+        page_number: Optional[int] = None,
     ) -> Union[QueryResponse, CollectionNotFound]:
         """
         Query the collection for similar chunks.
@@ -138,12 +130,12 @@ class QueryEngine:
             top_k,
             tags,
             source_id,
-            page_number)
+            page_number,
+        )
 
         try:
             # Verify collection exists
-            existing = {
-                c.name for c in self.client.get_collections().collections}
+            existing = {c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
@@ -161,7 +153,7 @@ class QueryEngine:
                 limit=top_k,
                 query_filter=search_filter,
                 with_payload=True,
-                with_vectors=False
+                with_vectors=False,
             )
 
             # Convert results to QueryResult objects
@@ -171,19 +163,21 @@ class QueryEngine:
                 node_content = payload.get("_node_content", "")
                 text, chunk_id = self._extract_text_from_node(node_content)
 
-                results.append(QueryResult(
-                    chunk_id=chunk_id,
-                    text=text,
-                    source_id=payload.get("source_id", ""),
-                    filename=payload.get("filename"),
-                    url=payload.get("url"),
-                    type=payload.get("type", ""),
-                    page_number=payload.get("page_number", 0),
-                    tags=payload.get("tags", []),
-                    extras=payload.get("extras", None),
-                    uploaded_at=payload.get("uploaded_at", ""),
-                    similarity_score=scored_point.score
-                ))
+                results.append(
+                    QueryResult(
+                        chunk_id=chunk_id,
+                        text=text,
+                        source_id=payload.get("source_id", ""),
+                        filename=payload.get("filename"),
+                        url=payload.get("url"),
+                        type=payload.get("type", ""),
+                        page_number=payload.get("page_number", 0),
+                        tags=payload.get("tags", []),
+                        extras=payload.get("extras", None),
+                        uploaded_at=payload.get("uploaded_at", ""),
+                        similarity_score=scored_point.score,
+                    )
+                )
 
             logger.info("Found %d results for query", len(results))
             return QueryResponse(results=results, total=len(results))
@@ -193,10 +187,7 @@ class QueryEngine:
             raise
 
     def get_source_chunks(
-        self,
-        collection_name: str,
-        source_id: str,
-        page_number: Optional[int] = None
+        self, collection_name: str, source_id: str, page_number: Optional[int] = None
     ) -> Union[SourceChunksResponse, CollectionNotFound]:
         """
         Retrieve all chunks for a specific source_id.
@@ -214,19 +205,20 @@ class QueryEngine:
             "Retrieving chunks for collection=%s, source_id=%s, page_number=%s",
             collection_name,
             source_id,
-            page_number)
+            page_number,
+        )
 
         try:
             # Verify collection exists
-            existing = {
-                c.name for c in self.client.get_collections().collections}
+            existing = {c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
             # Build filter for source_id and optional page_number
             search_filter = self._build_filter(
-                source_id=source_id, page_number=page_number)
+                source_id=source_id, page_number=page_number
+            )
 
             # Use search with a zero vector to get all points matching the filter
             # We use a large limit to get all chunks
@@ -237,7 +229,7 @@ class QueryEngine:
                 limit=10000,  # Adjust if needed for larger collections
                 query_filter=search_filter,
                 with_payload=True,
-                with_vectors=False
+                with_vectors=False,
             )
 
             # Initialize metadata variables
@@ -278,11 +270,9 @@ class QueryEngine:
                     page_num = 0
                 pages.add(page_num)
 
-                chunks.append(SourceChunk(
-                    chunk_id=chunk_id,
-                    text=text,
-                    page_number=page_num
-                ))
+                chunks.append(
+                    SourceChunk(chunk_id=chunk_id, text=text, page_number=page_num)
+                )
 
             # Sort chunks by page number and then by chunk_id for stable
             # ordering
@@ -294,7 +284,9 @@ class QueryEngine:
 
             logger.info(
                 "Found %d chunks for source_id=%s across %d pages",
-                len(chunks), source_id, len(pages)
+                len(chunks),
+                source_id,
+                len(pages),
             )
 
             return SourceChunksResponse(
@@ -307,7 +299,7 @@ class QueryEngine:
                 type=type,
                 tags=tags,
                 extras=extras,
-                uploaded_at=uploaded_at
+                uploaded_at=uploaded_at,
             )
 
         except Exception as e:
@@ -328,7 +320,7 @@ class QueryEngine:
         # Prepare the context from chunks
         context_parts = []
         for chunk in chunks:
-            source_info = f"Chunk from "
+            source_info = "Chunk from "
             if chunk.type == "pdf":
                 source_info += f"page {chunk.page_number} of {chunk.filename}"
             else:  # url
@@ -350,10 +342,13 @@ Given this information, please answer the question: {query}
             response = self.llm_client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that answers questions based on provided context."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that answers questions based on provided context.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
-                temperature=0.1  # Low temperature for more focused answers
+                temperature=0.1,  # Low temperature for more focused answers
             )
 
             return response.choices[0].message.content.strip()
@@ -369,7 +364,7 @@ Given this information, please answer the question: {query}
         top_k: int = None,
         tags: Optional[List[str]] = None,
         source_id: Optional[str] = None,
-        page_number: Optional[int] = None
+        page_number: Optional[int] = None,
     ) -> Union[AnswerResponse, CollectionNotFound]:
         """
         Generate an answer based on relevant chunks from the collection.
@@ -396,12 +391,12 @@ Given this information, please answer the question: {query}
             top_k,
             tags,
             source_id,
-            page_number)
+            page_number,
+        )
 
         try:
             # Verify collection exists
-            existing = {
-                c.name for c in self.client.get_collections().collections}
+            existing = {c.name for c in self.client.get_collections().collections}
             if collection_name not in existing:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
@@ -413,7 +408,7 @@ Given this information, please answer the question: {query}
                 top_k=top_k,
                 tags=tags,
                 source_id=source_id,
-                page_number=page_number
+                page_number=page_number,
             )
 
             # If query returned CollectionNotFound, propagate it
@@ -426,7 +421,7 @@ Given this information, please answer the question: {query}
             return AnswerResponse(
                 answer=answer,
                 chunks=query_response.results,
-                total_chunks=len(query_response.results)
+                total_chunks=len(query_response.results),
             )
 
         except Exception as e:

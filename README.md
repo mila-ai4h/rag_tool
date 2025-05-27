@@ -111,7 +111,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
     - Require API key to authenticate
     - List source documents whose content has been indexed
     - Return chunks for a given source document
-    - Return the following data along with each chunk: 
+    - Return the following data along with each chunk:
         - Chunk id
         - Chunk text
         - Source id
