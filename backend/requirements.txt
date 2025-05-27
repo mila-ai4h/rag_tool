@@ -1,27 +1,27 @@
 # Web Framework and Server
-fastapi
-uvicorn
-python-multipart
+fastapi==0.115.12
+uvicorn==0.34.2
+python-multipart==0.0.20
 
 # Configuration
-python-dotenv
+python-dotenv==1.1.0
 
 # Data Validation
-pydantic
+pydantic==2.11.4
 
 # LlamaIndex Components
-llama-index-core
-llama-index-embeddings-openai
-llama-index-vector-stores-qdrant
-llama-index-readers-web
+llama-index-core==0.12.37
+llama-index-embeddings-openai==0.3.1
+llama-index-vector-stores-qdrant==0.6.0
+llama-index-readers-web==0.4.1
 
 # Language Models
-openai
-tiktoken
+openai==1.81.0
+tiktoken==0.9.0
 
 # Vector Database
-qdrant-client
+qdrant-client==1.14.2
 
 # Document Processing
-PyMuPDF
-trafilatura
+PyMuPDF==1.26.0
+trafilatura==2.0.0
