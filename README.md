@@ -27,7 +27,7 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 
 ## API Documentation
 
-Interactive API documentation is available at `http://localhost:8000/docs` when running locally.
+Interactive API documentation is available at `http://localhost:8080/docs` when running locally.
 
 ### Authentication
 
