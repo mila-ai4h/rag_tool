@@ -36,19 +36,21 @@ docker compose build
 docker compose up -d
 ```
 
+The app runs by default on PORT 8080.
+
 You should then be able to navigate to the following page:
 
-    http://localhost:8000/docs
+    http://localhost:8080/docs
 
 ### CLI Usage
 You can access the API using REST endpoints from the CLI. The `/health` endpoint does not require an API key and should return a 200:
 
-    $ curl http://localhost:8000/health
+    $ curl http://localhost:8080/health
     {"status":"ok"}
 
 You can also ping the collections endpoint, but will need to use the API key set in the .env file:
 
-    $ curl http://localhost:8000/ -H "x-api-key: your-secret-key"
+    $ curl http://localhost:8080/ -H "x-api-key: your-secret-key"
     {"collections":[],"total":0}%
 
 ## Technology Stack
