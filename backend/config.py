@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # API settings
-API_KEY = os.getenv("API_KEY", "your-secret-key")
+API_KEY = os.getenv("X_API_KEY", "secret-key")
 API_KEY_NAME = "x-api-key"
 
 # Qdrant settings
