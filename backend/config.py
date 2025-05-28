@@ -1,8 +1,9 @@
 import os
-from dotenv import load_dotenv
+
+from dotenv import find_dotenv, load_dotenv
 
 # Load environment variables from .env
-load_dotenv()
+load_dotenv(find_dotenv(".env"))
 
 # API settings
 API_KEY = os.getenv("X_API_KEY", "secret-key")
@@ -25,3 +26,4 @@ DEFAULT_TOP_K = 5
 
 # LLM settings
 LLM_MODEL = "gpt-4o"  # OpenAI model to use for answer generation
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key")
