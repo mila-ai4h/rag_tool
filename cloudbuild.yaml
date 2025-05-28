@@ -1,0 +1,20 @@
+substitutions:
+  _PROJECT_ID: "mila-pocs" # Default value, can be overridden at runtime
+  _API_SERVICE_NAME: "backend-api"
+
+steps:
+  # Build the FastAPI API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '--cache-from'
+      - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
+      - '-t'
+      - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
+      - '-f'
+      - 'backend/Dockerfile'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
