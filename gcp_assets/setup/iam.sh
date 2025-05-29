@@ -1,4 +1,5 @@
 #!/bin/bash
+# Create and manage IAM service accounts and permissions for GCP project
 set -e
 
 # Source the environment variables from the root-based path

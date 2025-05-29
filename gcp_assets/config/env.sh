@@ -1,5 +1,6 @@
 #!/bin/bash
 # Global environment variables
+set -e
 
 # GCP project & location
 export PROJECT_ID=$(gcloud config get-value project)
@@ -8,7 +9,6 @@ export ZONE="us-central1-a"
 
 # Service names
 export API_SERVICE_NAME="backend-api"
-export VECTORSTORE_SERVICE_NAME="qdrant-vs"
 
 # Container image
 export API_IMAGE="gcr.io/${PROJECT_ID}/${API_SERVICE_NAME}:latest"
@@ -19,11 +19,10 @@ export API_SA="${API_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 export VECTORSTORE_SA_NAME="qdrant-vm-sa"
 export VECTORSTORE_SA="${VECTORSTORE_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# VECTORSTORE VM
+# VectorStore VM configuration
 export VECTORSTORE_VM_NAME="qdrant-vm"
 export VECTORSTORE_VM_MACHINE_TYPE="e2-standard-2"
 export VECTORSTORE_VM_DISK_SIZE="20GB"
-
 
 # VPC and networking
 export CONNECTOR_NAME="cr-connector"
@@ -33,3 +32,4 @@ export FIREWALL_RULE="allow-cloud-run-to-qdrant"
 
 # Secrets
 export OPENAI_SECRET_NAME="openai-api-key"
+export API_KEY_SECRET_NAME="api-key"
