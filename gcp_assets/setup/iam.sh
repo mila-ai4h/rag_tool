@@ -26,3 +26,11 @@ create_sa "${API_SA}" "${API_SA_NAME}" "Service account for API service"
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${API_SA}" --role="roles/secretmanager.secretAccessor"
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${API_SA}" --role="roles/logging.logWriter"
+
+# Create and attach roles to VectorStore account
+create_sa "${VECTORSTORE_SA}" "${VECTORSTORE_SA_NAME}" "Service account for Qdrant VM"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${VECTORSTORE_SA}" --role="roles/secretmanager.secretAccessor"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${VECTORSTORE_SA}" --role="roles/logging.logWriter"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${VECTORSTORE_SA}" --role="roles/monitoring.metricWriter"
+

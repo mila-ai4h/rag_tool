@@ -11,8 +11,9 @@ echo "Bootstrapping infrastructure for project: ${PROJECT_ID} in region: ${REGIO
 echo "Enabling required APIs..."
 gcloud services enable run.googleapis.com \
                         cloudbuild.googleapis.com \
-                        secretmanager.googleapis.com
-
+                        secretmanager.googleapis.com \
+                        compute.googleapis.com \
+                        vpcaccess.googleapis.com
 
 # Creation secrets ask user of input (openai-api-key)
 echo "Creating secrets: ${OPENAI_SECRET_NAME}"
