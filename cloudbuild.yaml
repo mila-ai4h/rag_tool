@@ -12,7 +12,7 @@ steps:
       - '-t'
       - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
       - '-f'
-      - 'backend/Dockerfile'
+      - 'src/backend/Dockerfile'
       - '.'
   - name: 'gcr.io/cloud-builders/docker'
     args:

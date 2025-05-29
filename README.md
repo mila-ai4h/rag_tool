@@ -61,8 +61,8 @@ You can also ping the collections endpoint, but will need to use the API key set
 - **AI Models**: OpenAI
 - **Language**: Python 3.x
 
-## Infrastructure
-![Infrastructure Diagram](docs/infrastructure.png)
+## Cloud Infrastructure
+![Infrastructure Diagram](docs/infrastructure.svg)
 
 
 ## API Documentation

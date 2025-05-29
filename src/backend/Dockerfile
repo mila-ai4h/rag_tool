@@ -9,7 +9,7 @@ ENV PYTHONPATH=/app
 WORKDIR /app
 
 # Copy the requirements file into the container.
-COPY backend/requirements.txt /app/
+COPY src/backend/requirements.txt /app/
 
 # uv pip
 RUN pip install uv
@@ -17,7 +17,7 @@ RUN pip install --upgrade pip setuptools wheel
 RUN uv pip install -r requirements.txt --system
 
 # Copy the entire backend folder (including your API code, celery tasks, etc.) into the container.
-COPY backend/ /app/
+COPY src/backend/ /app/
 
 # Expose the port Cloud Run (or your local environment) expects.
 EXPOSE 8080
