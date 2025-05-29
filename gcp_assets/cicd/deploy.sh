@@ -48,7 +48,7 @@ gcloud builds submit \
 echo "Build completed."
 
 # ───────────────────────────────────────────────
-# 7. Deploy API to Cloud Run
+# 3. Deploy API to Cloud Run
 # ───────────────────────────────────────────────
 echo "Deploying API to Cloud Run..."
 PRIVATE_IP=$(gcloud compute instances describe "${VECTORSTORE_VM_NAME}" --zone="${ZONE}" --format='value(networkInterfaces[0].networkIP)')
