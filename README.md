@@ -61,10 +61,6 @@ You can also ping the collections endpoint, but will need to use the API key set
 - **AI Models**: OpenAI
 - **Language**: Python 3.x
 
-## Cloud Infrastructure
-![Infrastructure Diagram](docs/infrastructure.svg)
-
-
 ## API Documentation
 
 Interactive API documentation is available at `http://localhost:8080/docs` when running locally.
@@ -99,6 +95,11 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
   - `GET /collections/{collection_name}/answer` — Question answering
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
+
+
+## Cloud Deployment
+![Infrastructure Diagram](docs/infrastructure.svg)
+
 
 ## Debugging
 
