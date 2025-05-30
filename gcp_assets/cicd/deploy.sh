@@ -53,7 +53,7 @@ echo "Build completed."
 echo "Deploying API to Cloud Run..."
 PRIVATE_IP=$(gcloud compute instances describe "${VECTORSTORE_VM_NAME}" --zone="${ZONE}" --format='value(networkInterfaces[0].networkIP)')
 OPENAI_API_KEY=$(gcloud secrets versions access latest --secret="${OPENAI_SECRET_NAME}")
-API_KEY=$(gcloud secrets versions access latest --secret="${API_KEY_SECRET_NAME}")
+X_API_KEY=$(gcloud secrets versions access latest --secret="${API_KEY_SECRET_NAME}")
 
 gcloud run deploy "${API_SERVICE_NAME}" \
   --project="${PROJECT_ID}" \
@@ -61,7 +61,7 @@ gcloud run deploy "${API_SERVICE_NAME}" \
   --image="${API_IMAGE}" \
   --vpc-connector="${CONNECTOR_NAME}" \
   --vpc-egress=all-traffic \
-  --set-env-vars="QDRANT_HOST=${PRIVATE_IP},QDRANT_PORT=${QDRANT_PORT},OPENAI_API_KEY=${OPENAI_API_KEY},API_KEY=${API_KEY}" \
+  --set-env-vars="QDRANT_HOST=${PRIVATE_IP},QDRANT_PORT=${QDRANT_PORT},OPENAI_API_KEY=${OPENAI_API_KEY},X_API_KEY=${X_API_KEY}" \
   --service-account="${API_SA}" \
   --port=8080
 
