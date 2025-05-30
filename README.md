@@ -64,9 +64,9 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
 
 ```bash
 # Stop and rebuild
-docker compose down
+docker compose --profile local down
 docker compose build
-docker compose up -d
+docker compose --profile local up -d
 
 # Test
 curl http://localhost:8080/ -H "x-api-key: your-secret-key"

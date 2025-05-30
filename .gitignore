@@ -62,4 +62,6 @@ cover/
 # Project files
 .DS_Store
 .env
+.env.local
+.env.cluster
 .python-version

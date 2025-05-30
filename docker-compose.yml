@@ -6,20 +6,23 @@ services:
     ports:
       - "8080:8080"
     environment:
-      QDRANT_HOST: "${QDRANT_HOST}"
-      QDRANT_PORT: "${QDRANT_PORT}"
+      QDRANT_URL: "${QDRANT_URL:-}"  # Optional URL for managed Qdrant service
+      QDRANT_HOST: "${QDRANT_HOST:-qdrant}"  # Default to 'qdrant' for local development
+      QDRANT_PORT: "${QDRANT_PORT:-6333}"  # Default to 6333 for local development
+      QDRANT_API_KEY: "${QDRANT_API_KEY:-}"  # Optional API key with empty default
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"  # Required OpenAI API key
       API_KEY: ${API_KEY}
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_started
+        required: false  # Make the dependency optional
 
   qdrant:
+    profiles: ["local"]  # Only start qdrant when using the local profile
     image: qdrant/qdrant
-    # Only expose qdrant via docker network:
-    expose:
-      - "${QDRANT_PORT}"
-    # Map port on host to port on docker network:
-    # ports:
-    #   - "${QDRANT_PORT}:${QDRANT_PORT}"
+    # Expose qdrant to host for debugging
+    ports:
+      - "${QDRANT_PORT:-6333}:${QDRANT_PORT:-6333}"
     volumes:
       - qdrant_data:/qdrant/storage
 

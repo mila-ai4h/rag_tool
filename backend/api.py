@@ -15,8 +15,10 @@ from config import (
     EMBED_DIMENSIONS,
     EMBED_MODEL,
     LLM_MODEL,
+    QDRANT_URL,
     QDRANT_HOST,
     QDRANT_PORT,
+    QDRANT_API_KEY,
 )
 from fastapi import (
     Depends,
@@ -71,7 +73,18 @@ def verify_api_key(key: str = Security(api_key_header)):
 
 
 # Initialize Qdrant client, Indexer and QueryEngine
-client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+if QDRANT_URL:
+    # Use managed Qdrant service
+    client = QdrantClient(
+        url=QDRANT_URL,
+        api_key=QDRANT_API_KEY,  # Will be None if not set in environment
+    )
+else:
+    # Use local Qdrant service
+    client = QdrantClient(
+        host=QDRANT_HOST,
+        port=QDRANT_PORT,
+    )
 indexer = Indexer(
     client,
     embed_model=EMBED_MODEL,
