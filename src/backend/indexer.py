@@ -35,6 +35,8 @@ from qdrant_client.http.models import (
     Filter,
     MatchValue,
     VectorParams,
+    PayloadFieldSchema,
+    PayloadSchemaType,
 )
 
 # Configure logging
@@ -70,32 +72,47 @@ class Indexer:
         Settings.include_embeddings = True
         Settings.disable_relationship_storage = True
 
-    def create_collection(self, name: str):
-        logger.info("Attempting to create collection=%s", name)
-        try:
-            existing = {c.name for c in self.client.get_collections().collections}
-            if name in existing:
-                logger.warning("Collection '%s' already exists", name)
-                return CollectionExists(collection_name=name)
+    def create_collection(self, collection_name: str) -> Union[CollectionCreated, CollectionExists, CollectionError]:
+        """Create a new collection with the specified name.
 
-            logger.info(
-                "Creating collection=%s with vector size=%d",
-                name,
-                self.embed_dimensions,
-            )
+        Returns:
+            CollectionCreated: If the collection was successfully created
+            CollectionExists: If the collection already exists
+            CollectionError: For other processing errors
+        """
+        try:
+            # Create collection with vector configuration
             self.client.create_collection(
-                collection_name=name,
+                collection_name=collection_name,
                 vectors_config=VectorParams(
                     size=self.embed_dimensions,
                     distance=Distance.COSINE,
                 ),
             )
-            logger.info("Successfully created collection=%s", name)
-            return CollectionCreated(collection_name=name)
+
+            # Create payload indexes after collection creation
+            self.client.create_payload_index(
+                collection_name=collection_name,
+                field_name="source_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=collection_name,
+                field_name="tags",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=collection_name,
+                field_name="page_number",
+                field_schema=PayloadSchemaType.INTEGER,
+            )
+
+            logger.info("Collection '%s' created successfully with payload indexes", collection_name)
+            return CollectionCreated(collection_name=collection_name)
 
         except Exception as e:
-            logger.exception("Error creating collection=%s: %s", name, str(e))
-            return CollectionError(collection_name=name, error=str(e))
+            logger.exception("Error creating collection=%s: %s", collection_name, str(e))
+            return CollectionError(collection_name=collection_name, error=str(e))
 
     def list_collections(self):
         logger.info("Listing all collections")

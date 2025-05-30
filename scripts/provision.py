@@ -18,7 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # API configuration
-API_BASE_URL = "http://localhost:8000"  # Adjust if needed
+API_BASE_URL = "http://localhost:8080"  # Adjust if needed
 
 
 def get_api_key(args_api_key: Optional[str] = None) -> str:
@@ -35,7 +35,8 @@ def delete_collection(name: str) -> bool:
     """Delete a collection if it exists."""
     try:
         response = requests.delete(
-            f"{API_BASE_URL}/collections/{name}", headers=HEADERS
+            f"{API_BASE_URL}/collections/{name}",
+            headers=HEADERS
         )
         if response.status_code == 200:
             logger.info(f"Collection '{name}' deleted successfully")
@@ -54,7 +55,10 @@ def delete_collection(name: str) -> bool:
 def create_collection(name: str) -> bool:
     """Create a new collection."""
     try:
-        response = requests.post(f"{API_BASE_URL}/collections/{name}", headers=HEADERS)
+        response = requests.post(
+            f"{API_BASE_URL}/collections/{name}",
+            headers=HEADERS
+        )
         if response.status_code == 200:
             logger.info(f"Collection '{name}' created successfully")
             return True
@@ -91,7 +95,7 @@ def index_pdf(
                 f"{API_BASE_URL}/collections/{collection}/add-pdf",
                 headers=HEADERS,
                 files=files,
-                data=data,
+                data=data
             )
 
             if response.status_code == 200:
@@ -121,7 +125,7 @@ def index_url(
         response = requests.post(
             f"{API_BASE_URL}/collections/{collection}/add-url",
             headers=HEADERS,
-            data=data,
+            data=data
         )
 
         if response.status_code == 200:
@@ -215,8 +219,8 @@ def main():
     )
     parser.add_argument(
         "--api-base-url",
-        default="http://localhost:8000",
-        help="Base URL for the API (default: http://localhost:8000)",
+        default="http://localhost:8080",
+        help="Base URL for the API (default: http://localhost:8080)",
     )
     args = parser.parse_args()
 

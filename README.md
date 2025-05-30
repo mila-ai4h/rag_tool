@@ -31,9 +31,9 @@ You will need at minimum to set the `OPENAI_API_KEY` to a valid value. Other key
 
 ```bash
 # Stop and rebuild
-docker compose down
+docker compose --profile local down
 docker compose build
-docker compose up -d
+docker compose --profile local up -d
 ```
 
 The app runs by default on PORT 8080.
@@ -95,11 +95,6 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
   - `GET /collections/{collection_name}/answer` — Question answering
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
-
-
-## Cloud Deployment
-![Infrastructure Diagram](docs/infrastructure.svg)
-
 
 ## Debugging
 
