@@ -14,6 +14,8 @@ export API_SERVICE_NAME="backend-api"
 export API_IMAGE="gcr.io/${PROJECT_ID}/${API_SERVICE_NAME}:latest"
 
 # Service accounts
+export CICD_SA_NAME="cicd-sa"
+export CICD_SA="${CICD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 export API_SA_NAME="backend-api-sa"
 export API_SA="${API_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 export VECTORSTORE_SA_NAME="qdrant-vm-sa"

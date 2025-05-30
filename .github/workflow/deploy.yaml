@@ -1,0 +1,36 @@
+name: CI/CD Deploy Script
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository.
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Authenticate to Google Cloud.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.CICD_SA_MILA }}'
+
+      # Step 3: Set up the Google Cloud SDK.
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: '${{ vars.GCP_PROJECT_MILA }}'
+          install_components: 'beta'
+
+      # Step 4: Make deploy.sh executable.
+      - name: Make deploy.sh executable
+        run: chmod +x ./gcp_assets/cicd/deploy.sh
+
+      # Step 5: Run the deploy.sh script
+      - name: Run deploy.sh
+        run: bash ./gcp_assets/cicd/deploy.sh

@@ -35,3 +35,10 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${VECTORSTORE_SA}" --role="roles/logging.logWriter"
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${VECTORSTORE_SA}" --role="roles/monitoring.metricWriter"
 
+# Create and attach roles to CI/CD service account
+create_sa "${CICD_SA}" "${CICD_SA_NAME}" "Service account for GitHub Actions CI/CD pipeline"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/secretmanager.secretAccessor"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/viewer"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/run.admin"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/iam.serviceAccountUser"
