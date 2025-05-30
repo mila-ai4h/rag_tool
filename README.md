@@ -13,6 +13,46 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 - OpenAI integration (text-embedding-3-small for embeddings, gpt-4o for generation)
 - PDF document processing with PyMuPDF
 
+## Run Locally
+
+Clone the repository locally, copy the `.env.example` file to `.env` in the root of the project and update the values of the API keys that need to be changed:
+
+
+```bash
+git clone https://github.com/mila-ai4h/rag_tool && cd rag_tool/
+cp .env.example .env
+```
+
+You will need at minimum to set the `OPENAI_API_KEY` to a valid value. Other keys can stay at their defaults for now.
+  OPENAI_API_KEY=<OPENAI_API_KEY>
+
+> Note: You will need to set the `X_API_KEY` for authentication to the server using the `x-api-key` in the request header. By default, the `X_API_KEY` is set to "secret-key".
+
+
+```bash
+# Stop and rebuild
+docker compose --profile local down
+docker compose build
+docker compose --profile local up -d
+```
+
+The app runs by default on PORT 8080.
+
+You should then be able to navigate to the following page:
+
+    http://localhost:8080/docs
+
+### CLI Usage
+You can access the API using REST endpoints from the CLI. The `/health` endpoint does not require an API key and should return a 200:
+
+    $ curl http://localhost:8080/health
+    {"status":"ok"}
+
+You can also ping the collections endpoint, but will need to use the API key set in the .env file:
+
+    $ curl http://localhost:8080/ -H "x-api-key: your-secret-key"
+    {"collections":[],"total":0}%
+
 ## Technology Stack
 
 - **Backend**: FastAPI
@@ -20,10 +60,6 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 - **Document Processing**: LlamaIndex
 - **AI Models**: OpenAI
 - **Language**: Python 3.x
-
-## Infrastructure
-![Infrastructure Diagram](docs/infrastructure.png)
-
 
 ## API Documentation
 
@@ -59,18 +95,6 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
   - `GET /collections/{collection_name}/answer` — Question answering
     - Parameters: `q`, `top_k`, `tags`, `source_id`, `page_number`
-
-## Run Locally
-
-```bash
-# Stop and rebuild
-docker compose --profile local down
-docker compose build
-docker compose --profile local up -d
-
-# Test
-curl http://localhost:8080/ -H "x-api-key: your-secret-key"
-```
 
 ## Debugging
 
