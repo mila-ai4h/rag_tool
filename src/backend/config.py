@@ -12,7 +12,7 @@ API_KEY_NAME = "x-api-key"
 # Qdrant settings
 QDRANT_URL = os.getenv("QDRANT_URL")  # Full URL for managed Qdrant service
 QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")  # Host for local Qdrant
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))  # Port for local Qdrant
+QDRANT_PORT = int(os.getenv("QDRANT_PORT") or 6333)  # Port for local Qdrant
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # Optional API key for Qdrant
 
 # Node splitter settings
