@@ -26,7 +26,7 @@ cp .env.example .env
 You will need at minimum to set the `OPENAI_API_KEY` to a valid value. Other keys can stay at their defaults for now.
   OPENAI_API_KEY=<OPENAI_API_KEY>
 
-> Note: You will need to set the `X_API_KEY` for authentication to the server using the `x-api-key` in the request header. By default, the `X_API_KEY` is set to "secret-key".
+> Note: You will need to set the `API_KEY` for authentication to the server using the `x-api-key` in the request header. By default, the `API_KEY` is set to "secret-key".
 
 
 ```bash
