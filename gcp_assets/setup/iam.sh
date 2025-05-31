@@ -42,3 +42,7 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/viewer"
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/run.admin"
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/iam.serviceAccountUser"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/storage.objectCreator"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${CICD_SA}" --role="roles/cloudbuild.builds.editor"
+
+
