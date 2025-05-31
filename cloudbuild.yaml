@@ -7,13 +7,13 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - build
-      - '--cache-from'
-      - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
+      - '--no-cache'
       - '-t'
       - 'gcr.io/$_PROJECT_ID/$_API_SERVICE_NAME:latest'
       - '-f'
       - 'src/backend/Dockerfile'
       - '.'
+
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - push
