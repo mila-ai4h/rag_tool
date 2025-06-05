@@ -1,0 +1,6 @@
+docling==2.35.0
+llama-cloud==0.1.23
+markitdown==0.1.2
+mistralai==1.8.1
+nest-asyncio==1.6.0
+python-dotenv==1.1.0

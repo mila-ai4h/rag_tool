@@ -29,6 +29,8 @@ venv_research/
 .venv/
 env/
 .env/
+uv.lock
+pyproject.toml
 
 # PyInstaller
 *.manifest
