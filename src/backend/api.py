@@ -118,15 +118,15 @@ def list_collections():
 
 
 @app.post(
-    "/collections/{name}",
+    "/collections/{collection_name}",
     response_model=CollectionCreated,
     dependencies=[Depends(verify_api_key)],
 )
-def create_collection(name: str):
-    result = indexer.create_collection(name)
+def create_collection(collection_name: str):
+    result = indexer.create_collection(collection_name)
     if isinstance(result, CollectionExists):
         raise HTTPException(
-            status_code=409, detail=f"Collection '{name}' already exists"
+            status_code=409, detail=f"Collection '{collection_name}' already exists"
         )
     if isinstance(result, CollectionError):
         raise HTTPException(status_code=500, detail=result.error)
@@ -134,11 +134,11 @@ def create_collection(name: str):
 
 
 @app.delete(
-    "/collections/{name}",
+    "/collections/{collection_name}",
     response_model=CollectionDeleted,
     dependencies=[Depends(verify_api_key)],
 )
-def delete_collection(name: str):
+def delete_collection(collection_name: str):
     """Delete a collection and all its content.
 
     Returns:
@@ -148,7 +148,7 @@ def delete_collection(name: str):
         HTTPException:
             - 500: If there are any processing errors
     """
-    result = indexer.delete_collection(name)
+    result = indexer.delete_collection(collection_name)
     if isinstance(result, CollectionError):
         raise HTTPException(status_code=500, detail=result.error)
     return result
@@ -173,12 +173,12 @@ def validate_extras(extras_dict: Dict[str, Any]) -> None:
 
 
 @app.post(
-    "/collections/{name}/add-pdf",
+    "/collections/{collection_name}/add-pdf",
     response_model=Union[DocumentIndexed, DocumentEmptyError, CollectionNotFound],
     dependencies=[Depends(verify_api_key)],
 )
 def add_pdf(
-    name: str,
+    collection_name: str,
     file: UploadFile = File(..., description="The PDF file to upload"),
     source_id: Optional[str] = Form(
         None,
@@ -186,7 +186,7 @@ def add_pdf(
     ),
     tags: Optional[str] = Form(
         None,
-        description="""Comma-separated list of tags to associate with the document.
+        description="""Optional comma-separated list of tags to associate with the document.
         Example: "engineering,2024,project-x"
         Spaces around commas are automatically trimmed.""",
     ),
@@ -212,7 +212,7 @@ def add_pdf(
     Each chunk will inherit the document's metadata (tags, extras, etc.).
 
     Args:
-        name: Name of the collection to add the document to
+        collection_name: Name of the collection to add the document to
         file: The PDF file to upload
         source_id: Optional custom source ID. If not provided, a UUID will be generated
         tags: Optional comma-separated list of tags. Example: "engineering,2024,project-x"
@@ -263,7 +263,7 @@ def add_pdf(
     try:
         # Index the PDF
         result = indexer.index_pdf(
-            name, temp_path, file.filename, source_id, tag_list, extras_dict
+            collection_name, temp_path, file.filename, source_id, tag_list, extras_dict
         )
 
         if isinstance(result, DocumentError):
@@ -283,12 +283,12 @@ def add_pdf(
 
 
 @app.post(
-    "/collections/{name}/add-url",
+    "/collections/{collection_name}/add-url",
     response_model=Union[DocumentIndexed, DocumentEmptyError, CollectionNotFound],
     dependencies=[Depends(verify_api_key)],
 )
 def add_url(
-    name: str,
+    collection_name: str,
     url: str = Form(..., description="The URL to fetch and index"),
     source_id: Optional[str] = Form(
         None,
@@ -296,7 +296,7 @@ def add_url(
     ),
     tags: Optional[str] = Form(
         None,
-        description="""Comma-separated list of tags to associate with the document.
+        description="""Optional comma-separated list of tags to associate with the document.
         Example: "engineering,2024,project-x"
         Spaces around commas are automatically trimmed.""",
     ),
@@ -322,7 +322,7 @@ def add_url(
     Each chunk will inherit the document's metadata (tags, extras, etc.).
 
     Args:
-        name: Name of the collection to add the document to
+        collection_name: Name of the collection to add the document to
         url: The URL to fetch and index
         source_id: Optional custom source ID. If not provided, a UUID will be generated
         tags: Optional comma-separated list of tags. Example: "engineering,2024,project-x"
@@ -362,7 +362,7 @@ def add_url(
 
     try:
         # Index the URL
-        result = indexer.index_url(name, url, source_id, tag_list, extras_dict)
+        result = indexer.index_url(collection_name, url, source_id, tag_list, extras_dict)
 
         if isinstance(result, DocumentError):
             raise HTTPException(status_code=500, detail=result.error)
@@ -409,7 +409,7 @@ def list_sources(collection_name: str):
     dependencies=[Depends(verify_api_key)],
 )
 def delete_source(collection_name: str, source_id: str):
-    """Delete all content associated with a given source_id from the collection.
+    """Delete all content associated with a given source ID from the collection.
 
     Returns:
         SourceDeleted: Information about the deleted source
@@ -441,11 +441,11 @@ def get_source_chunks(
     ),
 ):
     """
-    Retrieve all chunks for a specific source_id in a collection.
+    Retrieve all chunks for a specific source ID in a collection.
 
     Args:
         collection_name: Name of the collection to search in
-        source_id: The source_id to retrieve chunks for
+        source_id: The source ID to retrieve chunks for
         page_number: Optional page number to filter chunks by
 
     Returns:
@@ -481,11 +481,11 @@ def query_collection(
     q: str = Query(..., description="The search query text"),
     top_k: int = Query(DEFAULT_TOP_K, description="Number of results to return"),
     tags: Optional[str] = Query(
-        None, description="Comma-separated list of tags to filter by (AND operation)"
+        None, description="Optional comma-separated list of tags to filter by (AND operation)"
     ),
-    source_id: Optional[str] = Query(None, description="Filter results by source_id"),
+    source_id: Optional[str] = Query(None, description="Optional source ID to filter by"),
     page_number: Optional[int] = Query(
-        None, description="Filter results by page number"
+        None, description="Optional page number to filter by"
     ),
 ):
     """
@@ -496,7 +496,7 @@ def query_collection(
         q: The search query text
         top_k: Number of results to return (default from config)
         tags: Optional comma-separated list of tags to filter by (AND operation)
-        source_id: Optional source_id to filter by
+        source_id: Optional source ID to filter by
         page_number: Optional page number to filter by
 
     Returns:
@@ -540,11 +540,11 @@ def answer_question(
         DEFAULT_TOP_K, description="Number of chunks to use for answering"
     ),
     tags: Optional[str] = Query(
-        None, description="Comma-separated list of tags to filter by (AND operation)"
+        None, description="Optional comma-separated list of tags to filter by (AND operation)"
     ),
-    source_id: Optional[str] = Query(None, description="Filter chunks by source_id"),
+    source_id: Optional[str] = Query(None, description="Optional source ID to filter by"),
     page_number: Optional[int] = Query(
-        None, description="Filter chunks by page number"
+        None, description="Optional page number to filter by"
     ),
 ):
     """
@@ -555,7 +555,7 @@ def answer_question(
         q: The question to answer
         top_k: Number of chunks to use (default from config)
         tags: Optional comma-separated list of tags to filter by (AND operation)
-        source_id: Optional source_id to filter by
+        source_id: Optional source ID to filter by
         page_number: Optional page number to filter by
 
     Returns:

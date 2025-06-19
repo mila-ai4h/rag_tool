@@ -50,7 +50,7 @@ You can access the API using REST endpoints from the CLI. The `/health` endpoint
 
 You can also ping the collections endpoint, but will need to use the API key set in the .env file:
 
-    $ curl http://localhost:8080/ -H "x-api-key: your-secret-key"
+    $ curl http://localhost:8080/collections -H "x-api-key: your-secret-key"
     {"collections":[],"total":0}%
 
 ## Technology Stack
@@ -76,13 +76,13 @@ All endpoints except `/health` require an API key to be passed in the `X-API-Key
 
 - **Collections Management**
   - `GET /collections` — List all collections
-  - `POST /collections/{name}` — Create a new collection
-  - `DELETE /collections/{name}` — Delete a collection
+  - `POST /collections/{collection_name}` — Create a new collection
+  - `DELETE /collections/{collection_name}` — Delete a collection
 
 - **Document Management**
-  - `POST /collections/{name}/add-pdf` — Add a PDF document to a collection
+  - `POST /collections/{collection_name}/add-pdf` — Add a PDF document to a collection
     - Parameters: `file` (PDF), `source_id` (optional), `tags` (optional), `extras` (optional)
-  - `POST /collections/{name}/add-url` — Add content from a URL to a collection
+  - `POST /collections/{collection_name}/add-url` — Add content from a URL to a collection
     - Parameters: `url` (string), `source_id` (optional), `tags` (optional), `extras` (optional)
 
 - **Source Management**
@@ -151,7 +151,7 @@ curl -X POST http://localhost:6333/collections/test/points/scroll \
 
 - 26 May 2025:
     - Add support for indexing web content via URLs
-    - New endpoint `/collections/{name}/add-url` to process and index content from web pages
+    - New endpoint `/collections/{collection_name}/add-url` to process and index content from web pages
     - Add provisioning script and data for CASH project
 
 ## Backlog:
