@@ -15,6 +15,8 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 
 ## Run Locally
 
+To run locally, make sure to have `docker-compose>=2.35` installed. We recommend installing the latest version using [Docker Desktop](https://docs.docker.com/desktop/).
+
 Clone the repository locally, copy the `.env.example` file to `.env` in the root of the project and update the values of the API keys that need to be changed:
 
 
