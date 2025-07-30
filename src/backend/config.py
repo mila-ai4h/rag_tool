@@ -5,15 +5,7 @@ from dotenv import find_dotenv, load_dotenv
 # Load environment variables from .env
 load_dotenv(find_dotenv(".env"))
 
-# API settings
-API_KEY = os.getenv("API_KEY", "secret-key")
-API_KEY_NAME = "x-api-key"
-
-# Qdrant settings
-QDRANT_URL = os.getenv("QDRANT_URL")  # Full URL for managed Qdrant service
-QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")  # Host for local Qdrant
-QDRANT_PORT = int(os.getenv("QDRANT_PORT") or 6333)  # Port for local Qdrant
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # Optional API key for Qdrant
+# API settings (authentication removed)
 
 # Node splitter settings
 CHUNK_SIZE = 512
