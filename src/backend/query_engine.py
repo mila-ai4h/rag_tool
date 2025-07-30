@@ -5,7 +5,6 @@ from typing import List, Optional, Union
 from config import OPENAI_API_KEY
 from llama_index.core.settings import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.vector_stores.qdrant import QdrantVectorStore
 from models import (
     AnswerResponse,
     CollectionNotFound,
@@ -15,7 +14,6 @@ from models import (
     SourceChunksResponse,
 )
 from openai import OpenAI
-from qdrant_client.http.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,22 +22,22 @@ logger = logging.getLogger(__name__)
 class QueryEngine:
     def __init__(
         self,
-        client,
+        indexer,
         embed_model: str = "text-embedding-3-small",
         embed_dimensions: int = 1536,
         default_top_k: int = 5,
         llm_model: str = "gpt-4",
     ):
-        """Initialize the query engine with a Qdrant client and configuration parameters.
+        """Initialize the query engine with an indexer and configuration parameters.
 
         Args:
-            client: Qdrant client instance
+            indexer: Indexer instance that manages memory stores
             embed_model: Name of the OpenAI embedding model to use
             embed_dimensions: Dimension of the embedding vectors
             default_top_k: Default number of results to return
             llm_model: Name of the OpenAI LLM model to use for answers
         """
-        self.client = client
+        self.indexer = indexer
         self.embed_model = OpenAIEmbedding(model=embed_model)
         self.llm_client = OpenAI(api_key=OPENAI_API_KEY)
         self.embed_dimensions = embed_dimensions
@@ -53,50 +51,44 @@ class QueryEngine:
             llm_model,
         )
 
-    def _extract_text_from_node(self, node_json: str) -> tuple[str, str]:
-        """Extract the actual text content and node ID from a LlamaIndex TextNode JSON string."""
+    def _extract_text_from_node(self, text: str, node_id: str) -> tuple[str, str]:
+        """Extract the actual text content and node ID."""
         try:
-            node_data = json.loads(node_json)
-            # Extract both the text content and node ID
-            text = node_data.get("text", "")
-            # LlamaIndex uses "id_" for the node ID
-            chunk_id = node_data.get("id_", "")
             # Clean up any escaped newlines and other escape sequences
             text = text.encode().decode("unicode_escape")
             # Remove any leading/trailing whitespace and normalize newlines
             text = text.strip().replace("\r\n", "\n")
-            return text, chunk_id
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error("Error parsing node JSON: %s", str(e))
+            return text, node_id
+        except Exception as e:
+            logger.error("Error extracting text from node: %s", str(e))
             return "", ""
 
-    def _build_filter(
+    def _build_metadata_filter(
         self,
         tags: Optional[List[str]] = None,
         source_id: Optional[str] = None,
         page_number: Optional[int] = None,
-    ) -> Optional[Filter]:
-        """Build a Qdrant filter for tags, source_id, and page_number."""
-        conditions = []
+    ) -> callable:
+        """Build a metadata filter function for tags, source_id, and page_number."""
 
-        if tags:
-            # For each tag, we want to ensure it exists in the tags array
-            for tag in tags:
-                conditions.append(
-                    FieldCondition(key="tags", match=MatchValue(value=tag))
-                )
+        def filter_func(node_id: str, text: str, metadata: dict):
+            # Check source_id
+            if source_id and metadata.get("source_id") != source_id:
+                return False
 
-        if source_id:
-            conditions.append(
-                FieldCondition(key="source_id", match=MatchValue(value=source_id))
-            )
+            # Check page_number
+            if page_number is not None and metadata.get("page_number") != page_number:
+                return False
 
-        if page_number is not None:
-            conditions.append(
-                FieldCondition(key="page_number", match=MatchValue(value=page_number))
-            )
+            # Check tags (all tags must be present)
+            if tags:
+                node_tags = metadata.get("tags", [])
+                if not all(tag in node_tags for tag in tags):
+                    return False
 
-        return Filter(must=conditions) if conditions else None
+            return True
+
+        return filter_func
 
     def query(
         self,
@@ -135,48 +127,47 @@ class QueryEngine:
         )
 
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            # Get memory store for this collection
+            memory_store = self.indexer.get_memory_store(collection_name)
+
+            if not memory_store:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
-            # Generate query embedding
-            query_embedding = self.embed_model.get_text_embedding(query_text)
+            # Build metadata filter if needed
+            metadata_filter = None
+            if tags or source_id is not None or page_number is not None:
+                metadata_filter = self._build_metadata_filter(
+                    tags, source_id, page_number
+                )
 
-            # Build filter if needed
-            search_filter = self._build_filter(tags, source_id, page_number)
+            # Get all documents and filter them
+            all_documents = memory_store.get_all_documents()
+            filtered_documents = []
 
-            # Perform vector search
-            search_result = self.client.search(
-                collection_name=collection_name,
-                query_vector=query_embedding,
-                limit=top_k,
-                query_filter=search_filter,
-                with_payload=True,
-                with_vectors=False,
-            )
+            for node_id, text, metadata in all_documents:
+                if metadata_filter is None or metadata_filter(node_id, text, metadata):
+                    filtered_documents.append((node_id, text, metadata))
 
-            # Convert results to QueryResult objects
+            # For now, we'll return the first top_k documents
+            # In a real implementation, you would use embeddings for similarity search
             results = []
-            for scored_point in search_result:
-                payload = scored_point.payload
-                node_content = payload.get("_node_content", "")
-                text, chunk_id = self._extract_text_from_node(node_content)
+            for i, (node_id, text, metadata) in enumerate(filtered_documents[:top_k]):
+                text, chunk_id = self._extract_text_from_node(text, node_id)
 
                 results.append(
                     QueryResult(
                         chunk_id=chunk_id,
                         text=text,
-                        source_id=payload.get("source_id", ""),
-                        filename=payload.get("filename"),
-                        url=payload.get("url"),
-                        type=payload.get("type", ""),
-                        page_number=payload.get("page_number", 0),
-                        tags=payload.get("tags", []),
-                        extras=payload.get("extras", None),
-                        uploaded_at=payload.get("uploaded_at", ""),
-                        similarity_score=scored_point.score,
+                        source_id=metadata.get("source_id", ""),
+                        filename=metadata.get("filename"),
+                        url=metadata.get("url"),
+                        type=metadata.get("type", ""),
+                        page_number=metadata.get("page_number", 0),
+                        tags=metadata.get("tags", []),
+                        extras=metadata.get("extras", None),
+                        uploaded_at=metadata.get("uploaded_at", ""),
+                        similarity_score=1.0 - (i * 0.1),  # Simple scoring for now
                     )
                 )
 
@@ -210,28 +201,12 @@ class QueryEngine:
         )
 
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            # Get memory store for this collection
+            memory_store = self.indexer.get_memory_store(collection_name)
+
+            if not memory_store:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
-
-            # Build filter for source_id and optional page_number
-            search_filter = self._build_filter(
-                source_id=source_id, page_number=page_number
-            )
-
-            # Use search with a zero vector to get all points matching the filter
-            # We use a large limit to get all chunks
-            search_result = self.client.search(
-                collection_name=collection_name,
-                # Use instance embed_dimensions
-                query_vector=[0.0] * self.embed_dimensions,
-                limit=10000,  # Adjust if needed for larger collections
-                query_filter=search_filter,
-                with_payload=True,
-                with_vectors=False,
-            )
 
             # Initialize metadata variables
             chunks = []
@@ -243,28 +218,33 @@ class QueryEngine:
             uploaded_at = ""
             pages = set()
 
-            # If we have results, get metadata from first chunk
-            if search_result:
-                first_point = search_result[0]
-                if first_point.payload:
-                    filename = first_point.payload.get("filename")
-                    url = first_point.payload.get("url")
-                    type = first_point.payload.get("type", "unknown")
-                    tags = first_point.payload.get("tags", [])
-                    extras = first_point.payload.get("extras")
-                    uploaded_at = first_point.payload.get("uploaded_at", "")
-
-            # Process all chunks
-            for scored_point in search_result:
-                payload = scored_point.payload
-                if not payload:
+            # Iterate through all documents in the memory store
+            for node_id, text, metadata in memory_store.get_all_documents():
+                # Check if this node belongs to the requested source_id
+                if metadata.get("source_id") != source_id:
                     continue
 
-                node_content = payload.get("_node_content", "")
-                text, chunk_id = self._extract_text_from_node(node_content)
+                # Check page_number filter if specified
+                if (
+                    page_number is not None
+                    and metadata.get("page_number") != page_number
+                ):
+                    continue
+
+                # Extract text and chunk_id
+                text, chunk_id = self._extract_text_from_node(text, node_id)
+
+                # Get metadata from first matching node
+                if not chunks:  # First node
+                    filename = metadata.get("filename")
+                    url = metadata.get("url")
+                    type = metadata.get("type", "unknown")
+                    tags = metadata.get("tags", [])
+                    extras = metadata.get("extras")
+                    uploaded_at = metadata.get("uploaded_at", "")
 
                 # Get page number, defaulting to 1 for URLs
-                page_num = payload.get("page_number")
+                page_num = metadata.get("page_number")
                 if type == "url" and page_num is None:
                     page_num = 1
                 elif page_num is None:
@@ -275,8 +255,7 @@ class QueryEngine:
                     SourceChunk(chunk_id=chunk_id, text=text, page_number=page_num)
                 )
 
-            # Sort chunks by page number and then by chunk_id for stable
-            # ordering
+            # Sort chunks by page number and then by chunk_id for stable ordering
             chunks.sort(key=lambda x: (x.page_number, x.chunk_id))
 
             # For URLs, ensure we have at least one page
@@ -396,33 +375,57 @@ Given this information, please answer the question: {query}
         )
 
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            # Get memory store for this collection
+            memory_store = self.indexer.get_memory_store(collection_name)
+
+            if not memory_store:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
-            # First, get relevant chunks using the existing query method
-            query_response = self.query(
-                collection_name=collection_name,
-                query_text=query_text,
-                top_k=top_k,
-                tags=tags,
-                source_id=source_id,
-                page_number=page_number,
-            )
+            # Build metadata filter if needed
+            metadata_filter = None
+            if tags or source_id is not None or page_number is not None:
+                metadata_filter = self._build_metadata_filter(
+                    tags, source_id, page_number
+                )
 
-            # If query returned CollectionNotFound, propagate it
-            if isinstance(query_response, CollectionNotFound):
-                return query_response
+            # Get all documents and filter them
+            all_documents = memory_store.get_all_documents()
+            filtered_documents = []
+
+            for node_id, text, metadata in all_documents:
+                if metadata_filter is None or metadata_filter(node_id, text, metadata):
+                    filtered_documents.append((node_id, text, metadata))
+
+            # For now, we'll return the first top_k documents
+            # In a real implementation, you would use embeddings for similarity search
+            results = []
+            for i, (node_id, text, metadata) in enumerate(filtered_documents[:top_k]):
+                text, chunk_id = self._extract_text_from_node(text, node_id)
+
+                results.append(
+                    QueryResult(
+                        chunk_id=chunk_id,
+                        text=text,
+                        source_id=metadata.get("source_id", ""),
+                        filename=metadata.get("filename"),
+                        url=metadata.get("url"),
+                        type=metadata.get("type", ""),
+                        page_number=metadata.get("page_number", 0),
+                        tags=metadata.get("tags", []),
+                        extras=metadata.get("extras", None),
+                        uploaded_at=metadata.get("uploaded_at", ""),
+                        similarity_score=1.0 - (i * 0.1),  # Simple scoring for now
+                    )
+                )
 
             # Generate answer using the retrieved chunks
-            answer = self._generate_answer(query_text, query_response.results)
+            answer = self._generate_answer(query_text, results)
 
             return AnswerResponse(
                 answer=answer,
-                chunks=query_response.results,
-                total_chunks=len(query_response.results),
+                chunks=results,
+                total_chunks=len(results),
             )
 
         except Exception as e:

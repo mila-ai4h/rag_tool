@@ -7,30 +7,21 @@ from typing import Any, Dict, Optional, Union
 import requests
 import uvicorn
 from config import (
-    API_KEY,
-    API_KEY_NAME,
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     DEFAULT_TOP_K,
     EMBED_DIMENSIONS,
     EMBED_MODEL,
     LLM_MODEL,
-    QDRANT_URL,
-    QDRANT_HOST,
-    QDRANT_PORT,
-    QDRANT_API_KEY,
 )
 from fastapi import (
-    Depends,
     FastAPI,
     File,
     Form,
     HTTPException,
     Query,
-    Security,
     UploadFile,
 )
-from fastapi.security.api_key import APIKeyHeader
 from indexer import (
     CollectionCreated,
     CollectionDeleted,
@@ -47,14 +38,13 @@ from indexer import (
     SourceList,
     SourceListError,
 )
-from qdrant_client import QdrantClient
 from query_engine import (
     AnswerResponse,
     QueryEngine,
     QueryResponse,
     SourceChunksResponse,
 )
-from starlette.status import HTTP_403_FORBIDDEN
+
 
 # Configure logging
 logging.basicConfig(
@@ -63,37 +53,16 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# Security dependency
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-
-def verify_api_key(key: str = Security(api_key_header)):
-    if key != API_KEY:
-        raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="Unauthorized")
-
-
-# Initialize Qdrant client, Indexer and QueryEngine
-if QDRANT_URL:
-    # Use managed Qdrant service
-    client = QdrantClient(
-        url=QDRANT_URL,
-        api_key=QDRANT_API_KEY,  # Will be None if not set in environment
-    )
-else:
-    # Use local Qdrant service
-    client = QdrantClient(
-        host=QDRANT_HOST,
-        port=QDRANT_PORT,
-    )
+# Initialize Indexer and QueryEngine
 indexer = Indexer(
-    client,
     embed_model=EMBED_MODEL,
     embed_dimensions=EMBED_DIMENSIONS,
     chunk_size=CHUNK_SIZE,
     chunk_overlap=CHUNK_OVERLAP,
 )
 query_engine = QueryEngine(
-    client,
+    indexer,
     embed_model=EMBED_MODEL,
     embed_dimensions=EMBED_DIMENSIONS,
     default_top_k=DEFAULT_TOP_K,
@@ -111,7 +80,6 @@ def health():
 @app.get(
     "/collections",
     response_model=CollectionList,
-    dependencies=[Depends(verify_api_key)],
 )
 def list_collections():
     return indexer.list_collections()
@@ -120,7 +88,6 @@ def list_collections():
 @app.post(
     "/collections/{collection_name}",
     response_model=CollectionCreated,
-    dependencies=[Depends(verify_api_key)],
 )
 def create_collection(collection_name: str):
     result = indexer.create_collection(collection_name)
@@ -136,7 +103,6 @@ def create_collection(collection_name: str):
 @app.delete(
     "/collections/{collection_name}",
     response_model=CollectionDeleted,
-    dependencies=[Depends(verify_api_key)],
 )
 def delete_collection(collection_name: str):
     """Delete a collection and all its content.
@@ -175,7 +141,6 @@ def validate_extras(extras_dict: Dict[str, Any]) -> None:
 @app.post(
     "/collections/{collection_name}/add-pdf",
     response_model=Union[DocumentIndexed, DocumentEmptyError, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def add_pdf(
     collection_name: str,
@@ -285,7 +250,6 @@ def add_pdf(
 @app.post(
     "/collections/{collection_name}/add-url",
     response_model=Union[DocumentIndexed, DocumentEmptyError, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def add_url(
     collection_name: str,
@@ -362,7 +326,9 @@ def add_url(
 
     try:
         # Index the URL
-        result = indexer.index_url(collection_name, url, source_id, tag_list, extras_dict)
+        result = indexer.index_url(
+            collection_name, url, source_id, tag_list, extras_dict
+        )
 
         if isinstance(result, DocumentError):
             raise HTTPException(status_code=500, detail=result.error)
@@ -381,7 +347,6 @@ def add_url(
 @app.get(
     "/collections/{collection_name}/sources",
     response_model=Union[SourceList, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def list_sources(collection_name: str):
     """List all sources in a collection with their details.
@@ -406,7 +371,6 @@ def list_sources(collection_name: str):
 @app.delete(
     "/collections/{collection_name}/sources/{source_id}",
     response_model=Union[SourceDeleted, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def delete_source(collection_name: str, source_id: str):
     """Delete all content associated with a given source ID from the collection.
@@ -431,7 +395,6 @@ def delete_source(collection_name: str, source_id: str):
 @app.get(
     "/collections/{collection_name}/sources/{source_id}/chunks",
     response_model=Union[SourceChunksResponse, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def get_source_chunks(
     collection_name: str,
@@ -474,16 +437,18 @@ def get_source_chunks(
 @app.get(
     "/collections/{collection_name}/query",
     response_model=Union[QueryResponse, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def query_collection(
     collection_name: str,
     q: str = Query(..., description="The search query text"),
     top_k: int = Query(DEFAULT_TOP_K, description="Number of results to return"),
     tags: Optional[str] = Query(
-        None, description="Optional comma-separated list of tags to filter by (AND operation)"
+        None,
+        description="Optional comma-separated list of tags to filter by (AND operation)",
     ),
-    source_id: Optional[str] = Query(None, description="Optional source ID to filter by"),
+    source_id: Optional[str] = Query(
+        None, description="Optional source ID to filter by"
+    ),
     page_number: Optional[int] = Query(
         None, description="Optional page number to filter by"
     ),
@@ -531,7 +496,6 @@ def query_collection(
 @app.get(
     "/collections/{collection_name}/answer",
     response_model=Union[AnswerResponse, CollectionNotFound],
-    dependencies=[Depends(verify_api_key)],
 )
 def answer_question(
     collection_name: str,
@@ -540,9 +504,12 @@ def answer_question(
         DEFAULT_TOP_K, description="Number of chunks to use for answering"
     ),
     tags: Optional[str] = Query(
-        None, description="Optional comma-separated list of tags to filter by (AND operation)"
+        None,
+        description="Optional comma-separated list of tags to filter by (AND operation)",
     ),
-    source_id: Optional[str] = Query(None, description="Optional source ID to filter by"),
+    source_id: Optional[str] = Query(
+        None, description="Optional source ID to filter by"
+    ),
     page_number: Optional[int] = Query(
         None, description="Optional page number to filter by"
     ),

@@ -6,11 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import fitz  # PyMuPDF
 import requests
 import trafilatura
-from llama_index.core import Document
+from llama_index.core import Document, VectorStoreIndex, StorageContext
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.settings import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.vector_stores.qdrant import QdrantVectorStore
 from models import (
     CollectionCreated,
     CollectionDeleted,
@@ -29,34 +28,70 @@ from models import (
     SourceListError,
 )
 from playwright.sync_api import sync_playwright
-from qdrant_client.http.models import (
-    Distance,
-    FieldCondition,
-    Filter,
-    MatchValue,
-    VectorParams,
-    PayloadFieldSchema,
-    PayloadSchemaType,
-)
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 
+class SimpleMemoryStore:
+    """A simple in-memory storage for documents and their metadata."""
+
+    def __init__(self):
+        self.documents = {}  # node_id -> document_data
+        self.metadata = {}  # node_id -> metadata
+
+    def add_document(self, node_id: str, text: str, metadata: dict):
+        """Add a document to the store."""
+        self.documents[node_id] = text
+        self.metadata[node_id] = metadata
+
+    def get_document(self, node_id: str) -> Tuple[str, dict]:
+        """Get a document from the store."""
+        return self.documents.get(node_id, ""), self.metadata.get(node_id, {})
+
+    def remove_document(self, node_id: str):
+        """Remove a document from the store."""
+        if node_id in self.documents:
+            del self.documents[node_id]
+        if node_id in self.metadata:
+            del self.metadata[node_id]
+
+    def get_all_documents(self) -> List[Tuple[str, str, dict]]:
+        """Get all documents as (node_id, text, metadata) tuples."""
+        return [
+            (node_id, text, self.metadata.get(node_id, {}))
+            for node_id, text in self.documents.items()
+        ]
+
+    def count(self) -> int:
+        """Get the number of documents in the store."""
+        return len(self.documents)
+
+    def get_by_source_id(self, source_id: str) -> List[Tuple[str, str, dict]]:
+        """Get all documents for a specific source_id."""
+        result = []
+        for node_id, text in self.documents.items():
+            metadata = self.metadata.get(node_id, {})
+            if metadata.get("source_id") == source_id:
+                result.append((node_id, text, metadata))
+        return result
+
+
 class Indexer:
     def __init__(
         self,
-        client,
         chunk_size: int,
         chunk_overlap: int,
         embed_model: str,
         embed_dimensions: int,
     ):
-        self.client = client
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.embed_model = embed_model
         self.embed_dimensions = embed_dimensions
+
+        # Store memory stores for each collection
+        self.memory_stores = {}
 
         logger.info(
             "Initializing Indexer with chunk_size=%d, chunk_overlap=%d, embed_model=%s, embed_dimensions=%d",
@@ -72,7 +107,9 @@ class Indexer:
         Settings.include_embeddings = True
         Settings.disable_relationship_storage = True
 
-    def create_collection(self, collection_name: str) -> Union[CollectionCreated, CollectionExists, CollectionError]:
+    def create_collection(
+        self, collection_name: str
+    ) -> Union[CollectionCreated, CollectionExists, CollectionError]:
         """Create a new collection with the specified name.
 
         Returns:
@@ -81,58 +118,37 @@ class Indexer:
             CollectionError: For other processing errors
         """
         try:
-            # Create collection with vector configuration
-            self.client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=self.embed_dimensions,
-                    distance=Distance.COSINE,
-                ),
-            )
+            if collection_name in self.memory_stores:
+                logger.info("Collection '%s' already exists", collection_name)
+                return CollectionExists(collection_name=collection_name)
 
-            # Create payload indexes after collection creation
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="source_id",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="tags",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="page_number",
-                field_schema=PayloadSchemaType.INTEGER,
-            )
+            # Create a new memory store for this collection
+            memory_store = SimpleMemoryStore()
+            self.memory_stores[collection_name] = memory_store
 
-            logger.info("Collection '%s' created successfully with payload indexes", collection_name)
+            logger.info("Collection '%s' created successfully", collection_name)
             return CollectionCreated(collection_name=collection_name)
 
         except Exception as e:
-            logger.exception("Error creating collection=%s: %s", collection_name, str(e))
+            logger.exception(
+                "Error creating collection=%s: %s", collection_name, str(e)
+            )
             return CollectionError(collection_name=collection_name, error=str(e))
 
     def list_collections(self):
         logger.info("Listing all collections")
         try:
-            collections = self.client.get_collections().collections
-            logger.info("Found %d collections", len(collections))
-
             infos = []
-            for col in collections:
-                logger.debug("Getting details for collection=%s", col.name)
-                info = self.client.get_collection(collection_name=col.name)
-                count = self.client.count(collection_name=col.name, exact=True).count
-                logger.debug("Collection=%s has %d points", col.name, count)
+            for collection_name in self.memory_stores:
+                memory_store = self.memory_stores[collection_name]
+                points_count = memory_store.count()
 
                 infos.append(
                     CollectionInfo(
-                        name=col.name,
-                        vector_size=info.config.params.vectors.size,
-                        distance=info.config.params.vectors.distance,
-                        points_count=count,
+                        name=collection_name,
+                        vector_size=self.embed_dimensions,
+                        distance="cosine",
+                        points_count=points_count,
                     )
                 )
 
@@ -152,16 +168,18 @@ class Indexer:
         """
         logger.info("Attempting to delete collection=%s", name)
         try:
-            existing = {c.name for c in self.client.get_collections().collections}
-            if name not in existing:
+            if name not in self.memory_stores:
                 logger.info("Collection '%s' does not exist, nothing to delete", name)
                 return CollectionDeleted(collection_name=name)
 
             # Get count before deletion for logging
-            count = self.client.count(collection_name=name, exact=True).count
+            memory_store = self.memory_stores[name]
+            count = memory_store.count()
             logger.info("Collection=%s has %d points before deletion", name, count)
 
-            self.client.delete_collection(collection_name=name)
+            # Remove the collection from our storage
+            del self.memory_stores[name]
+
             logger.info(
                 "Successfully deleted collection=%s with %d points", name, count
             )
@@ -312,43 +330,26 @@ class Indexer:
             DocumentError: For other processing errors
         """
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            if collection_name not in self.memory_stores:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
-            count_before = self.client.count(
-                collection_name=collection_name,
-                count_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="source_id", match=MatchValue(value=source_id)
-                        )
-                    ]
-                ),
-                exact=True,
-            ).count
+            memory_store = self.memory_stores[collection_name]
 
-            if count_before > 0:
-                logger.info(
-                    "Found %d existing chunks with source_id=%s, deleting them first",
-                    count_before,
-                    source_id,
-                )
-                self.client.delete(
-                    collection_name=collection_name,
-                    points_selector=Filter(
-                        must=[
-                            FieldCondition(
-                                key="source_id", match=MatchValue(value=source_id)
-                            )
-                        ]
-                    ),
-                )
-                logger.info(
-                    "Successfully deleted existing chunks for source_id=%s", source_id
-                )
+            # Find and remove nodes with matching source_id
+            nodes_to_remove = []
+            for node_id, text, metadata in memory_store.get_all_documents():
+                if metadata.get("source_id") == source_id:
+                    nodes_to_remove.append(node_id)
+
+            for node_id in nodes_to_remove:
+                memory_store.remove_document(node_id)
+
+            logger.info(
+                "Successfully deleted %d chunks for source_id=%s",
+                len(nodes_to_remove),
+                source_id,
+            )
             return None
 
         except Exception as e:
@@ -392,9 +393,7 @@ class Indexer:
             uploaded_at = datetime.utcnow().isoformat() + "Z"
             logger.info("Using upload timestamp: %s", uploaded_at)
 
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            if collection_name not in self.memory_stores:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
@@ -410,27 +409,14 @@ class Indexer:
             nodes = splitter.get_nodes_from_documents([document])
             logger.info("Created %d chunks from document", len(nodes))
 
-            # Embed and store in Qdrant
-            logger.info("Starting embedding generation and vector storage")
-            vector_store = QdrantVectorStore(
-                client=self.client, collection_name=collection_name
-            )
+            # Get the memory store for this collection
+            memory_store = self.memory_stores[collection_name]
 
-            # Process nodes in batches for better logging
-            batch_size = 10
-            for i in range(0, len(nodes), batch_size):
-                batch = nodes[i : i + batch_size]
-                logger.info(
-                    "Processing embedding batch %d-%d/%d",
-                    i + 1,
-                    min(i + batch_size, len(nodes)),
-                    len(nodes),
-                )
-                texts = [node.text for node in batch]
-                embeddings = Settings.embed_model.get_text_embedding_batch(texts)
-                for node, embedding in zip(batch, embeddings):
-                    node.embedding = embedding
-                vector_store.add(batch)
+            # Store each node in the memory store
+            logger.info("Starting document storage")
+            for i, node in enumerate(nodes):
+                node_id = f"{source_id}_{i}"
+                memory_store.add_document(node_id, node.text, node.metadata)
 
             # Get source identifier (filename or url) from document metadata
             source_identifier = document.metadata.get(
@@ -652,85 +638,31 @@ class Indexer:
             source_id,
         )
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            if collection_name not in self.memory_stores:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
-            # Debug: Get total points in collection
-            total_points = self.client.count(
-                collection_name=collection_name, exact=True
-            ).count
-            logger.info("Total points in collection: %d", total_points)
+            memory_store = self.memory_stores[collection_name]
 
-            # Debug: List all unique source_ids in collection
-            search_result = self.client.scroll(
-                collection_name=collection_name,
-                limit=100,  # Adjust if needed
-                with_payload=True,
-                with_vectors=False,
-            )[
-                0
-            ]  # scroll returns (points, next_page_offset)
+            # Find and remove nodes with matching source_id
+            nodes_to_remove = []
+            for node_id, text, metadata in memory_store.get_all_documents():
+                if metadata.get("source_id") == source_id:
+                    nodes_to_remove.append(node_id)
 
-            unique_source_ids = {
-                point.payload.get("source_id")
-                for point in search_result
-                if point.payload
-            }
-            logger.info("Found source_ids in collection: %s", unique_source_ids)
-
-            # Get count before deletion to know how many points were deleted
-            count_before = self.client.count(
-                collection_name=collection_name,
-                count_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="source_id", match=MatchValue(value=source_id)
-                        )
-                    ]
-                ),
-                exact=True,
-            ).count
-            logger.info(
-                "Found %d points matching source_id=%s", count_before, source_id
-            )
-
-            if count_before == 0:
-                logger.warning(
-                    "No points found with source_id=%s in collection=%s",
-                    source_id,
-                    collection_name,
-                )
-                return SourceDeleted(
-                    collection_name=collection_name,
-                    source_id=source_id,
-                    points_deleted=0,
-                )
-
-            # Delete points matching the source_id using proper filter models
-            self.client.delete(
-                collection_name=collection_name,
-                points_selector=Filter(
-                    must=[
-                        FieldCondition(
-                            key="source_id", match=MatchValue(value=source_id)
-                        )
-                    ]
-                ),
-            )
+            for node_id in nodes_to_remove:
+                memory_store.remove_document(node_id)
 
             logger.info(
                 "Successfully deleted %d points for source_id=%s",
-                count_before,
+                len(nodes_to_remove),
                 source_id,
             )
 
             return SourceDeleted(
                 collection_name=collection_name,
                 source_id=source_id,
-                points_deleted=count_before,
+                points_deleted=len(nodes_to_remove),
             )
 
         except Exception as e:
@@ -751,45 +683,34 @@ class Indexer:
         """
         logger.info("Listing sources for collection=%s", collection_name)
         try:
-            # Verify collection exists
-            existing = {c.name for c in self.client.get_collections().collections}
-            if collection_name not in existing:
+            if collection_name not in self.memory_stores:
                 logger.error("Collection '%s' does not exist", collection_name)
                 return CollectionNotFound(collection_name=collection_name)
 
-            # Get all points with their payloads
-            points, _ = self.client.scroll(
-                collection_name=collection_name,
-                limit=10000,  # Adjust if needed for larger collections
-                with_payload=True,
-                with_vectors=False,
-            )
+            memory_store = self.memory_stores[collection_name]
 
-            # Group points by source_id and collect metadata
+            # Group nodes by source_id and collect metadata
             source_info = {}
-            for point in points:
-                if not point.payload:
-                    continue
-
-                source_id = point.payload.get("source_id")
+            for node_id, text, metadata in memory_store.get_all_documents():
+                source_id = metadata.get("source_id")
                 if not source_id:
                     continue
 
                 if source_id not in source_info:
                     source_info[source_id] = {
-                        "filename": point.payload.get("filename"),
-                        "url": point.payload.get("url"),
-                        "type": point.payload.get("type", "pdf"),
+                        "filename": metadata.get("filename"),
+                        "url": metadata.get("url"),
+                        "type": metadata.get("type", "pdf"),
                         "chunks_count": 0,
                         "pages": set(),
-                        "tags": point.payload.get("tags", []),
-                        "extras": point.payload.get("extras", None),
-                        "uploaded_at": point.payload.get("uploaded_at", ""),
+                        "tags": metadata.get("tags", []),
+                        "extras": metadata.get("extras", None),
+                        "uploaded_at": metadata.get("uploaded_at", ""),
                     }
 
                 source_info[source_id]["chunks_count"] += 1
-                if "page_number" in point.payload:
-                    source_info[source_id]["pages"].add(point.payload["page_number"])
+                if "page_number" in metadata:
+                    source_info[source_id]["pages"].add(metadata["page_number"])
 
             # Convert to SourceInfo objects
             sources = []
@@ -823,3 +744,7 @@ class Indexer:
         except Exception as e:
             logger.exception("Error while listing sources: %s", str(e))
             return SourceListError(collection_name=collection_name, error=str(e))
+
+    def get_memory_store(self, collection_name: str):
+        """Get the memory store for a collection."""
+        return self.memory_stores.get(collection_name)
