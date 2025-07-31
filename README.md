@@ -18,13 +18,7 @@ FastAPI backend service that leverages LlamaIndex for document processing and re
 
 To run the backend server locally without Docker:
 
-1. **Install Python dependencies:**
-   ```bash
-   cd src/backend
-   pip install -r requirements.txt
-   ```
-
-2. **Set up environment variables:**
+1. **Set up environment variables:**
    ```bash
    # Copy the example environment file
    cp .env.example .env
@@ -32,6 +26,15 @@ To run the backend server locally without Docker:
    # Edit .env and set your OpenAI API key
    # OPENAI_API_KEY=your_openai_api_key_here
    ```
+
+2. **Install Python dependencies:**
+
+   ```bash
+   cd src/backend
+   pip install -r requirements.txt
+   ```
+
+> Note: We recommend working in a virtual environment for thie
 
 3. **Run the server:**
    ```bash
