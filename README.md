@@ -34,7 +34,7 @@ To run the backend server locally without Docker:
    pip install -r requirements.txt
    ```
 
-> Note: We recommend working in a virtual environment for thie
+> Note: We recommend working in a virtual environment for this
 
 3. **Run the server:**
    ```bash
